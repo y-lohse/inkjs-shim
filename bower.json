@@ -1,0 +1,27 @@
+{
+  "name": "inkjs",
+  "authors": [
+    "Yannick Lohse <contact@yannick-lohse.fr>"
+  ],
+  "description": "A javascript port of inkle's ink scripting language.",
+  "main": "ink.iife.js",
+  "keywords": [
+    "ink",
+    "inkle",
+    "game",
+    "engine",
+    "interactive",
+    "fiction",
+    "narrative",
+    "story"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/y-lohse/inkjs",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ]
+}

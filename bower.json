@@ -4,7 +4,7 @@
     "Yannick Lohse <contact@yannick-lohse.fr>"
   ],
   "description": "A javascript port of inkle's ink scripting language.",
-  "main": "ink.iife.js",
+  "main": "ink.min.js",
   "keywords": [
     "ink",
     "inkle",

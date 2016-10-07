@@ -331,7 +331,7 @@
 		}
 	}
 
-	var ValueType$1 = {
+	var ValueType = {
 		// Used in coersion
 		Int: 0,
 		Float: 1,
@@ -408,13 +408,13 @@
 	class IntValue extends Value{
 		constructor(val){
 			super(val || 0);
-			this._valueType = ValueType$1.Int;
+			this._valueType = ValueType.Int;
 		}
 		get isTruthy(){
 			return this.value != 0;
 		}
 		get valueType(){
-			return ValueType$1.Int;
+			return ValueType.Int;
 		}
 		
 		Cast(newType){
@@ -422,11 +422,11 @@
 				return this;
 			}
 
-			if (newType == ValueType$1.Float) {
+			if (newType == ValueType.Float) {
 				return new FloatValue(parseFloat(this.value));
 			}
 
-			if (newType == ValueType$1.String) {
+			if (newType == ValueType.String) {
 				return new StringValue("" + this.value);
 			}
 
@@ -437,13 +437,13 @@
 	class FloatValue extends Value{
 		constructor(val){
 			super(val || 0.0);
-			this._valueType = ValueType$1.Float;
+			this._valueType = ValueType.Float;
 		}
 		get isTruthy(){
 			return this._value != 0.0;
 		}
 		get valueType(){
-			return ValueType$1.Float;
+			return ValueType.Float;
 		}
 		
 		Cast(newType){
@@ -451,11 +451,11 @@
 				return this;
 			}
 
-			if (newType == ValueType$1.Int) {
+			if (newType == ValueType.Int) {
 				return new IntValue(parseInt(this.value));
 			}
 
-			if (newType == ValueType$1.String) {
+			if (newType == ValueType.String) {
 				return new StringValue("" + this.value);
 			}
 
@@ -466,7 +466,7 @@
 	class StringValue extends Value{
 		constructor(val){
 			super(val || '');
-			this._valueType = ValueType$1.String;
+			this._valueType = ValueType.String;
 			
 			this._isNewline = (this.value == "\n");
 			this._isInlineWhitespace = true;
@@ -481,7 +481,7 @@
 			});
 		}
 		get valueType(){
-			return ValueType$1.String;
+			return ValueType.String;
 		}
 		get isTruthy(){
 			return this.value.length > 0;
@@ -501,7 +501,7 @@
 				return this;
 			}
 
-			if (newType == ValueType$1.Int) {
+			if (newType == ValueType.Int) {
 
 				var parsedInt;
 				if (parsedInt = parseInt(value)) {
@@ -511,7 +511,7 @@
 				}
 			}
 
-			if (newType == ValueType$1.Float) {
+			if (newType == ValueType.Float) {
 				var parsedFloat;
 				if (parsedFloat = parsedFloat(value)) {
 					return new FloatValue(parsedFloat);
@@ -528,7 +528,7 @@
 		constructor(targetPath){
 			super(targetPath);
 			
-			this._valueType = ValueType$1.DivertTarget;
+			this._valueType = ValueType.DivertTarget;
 		}
 		get targetPath(){
 			return this.value;
@@ -555,7 +555,7 @@
 		constructor(variableName, contextIndex){
 			super(variableName);
 			
-			this._valueType = ValueType$1.VariablePointer;
+			this._valueType = ValueType.VariablePointer;
 			this.contextIndex = (typeof contextIndex !== 'undefined') ? contextIndex : -1;
 		}
 		get variableName(){
@@ -587,6 +587,33 @@
 			super(message);
 			this.message = message;
 			this.name = 'StoryException';
+		}
+	}
+
+	class StringBuilder{
+		constructor(str){
+			str = (typeof str !== 'undefined') ? str.toString() : '';
+			this._string = str;
+		}
+		get Length(){
+			return this._string.length;
+		}
+		Append(str){
+			this._string += str;
+		}
+		AppendLine(str){
+			if (typeof str !== 'undefined') this.Append(str);
+			this._string += "\n";
+		}
+		AppendFormat(format){
+			//taken from http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format
+			var args = Array.prototype.slice.call(arguments, 1);
+			return format.replace(/{(\d+)}/g, function(match, number){
+				return typeof args[number] != 'undefined' ? args[number] : match;
+			});
+		}
+		toString(){
+			return this._string;
 		}
 	}
 
@@ -798,28 +825,30 @@
 		}
 		BuildStringOfHierarchy(sb, indentation, pointedObj){
 			if (arguments.length == 0){
-				return this.BuildStringOfHierarchy('', 0, null);
+				var sb = new StringBuilder();
+				this.BuildStringOfHierarchy(sb, 0, null);
+				return sb.toString();
 			}
 			
 			function appendIndentation(){
 				var spacesPerIndent = 4;
 				for(var i = 0; i < spacesPerIndent*indentation; ++i) { 
-					sb += " "; 
+					sb.Append(" "); 
 				}
 			}
 
 			appendIndentation();
-			sb += "[";
+			sb.Append("[");
 
 			if (this.hasValidName) {
-				sb += " (" + this.name + ")";
+				sb.AppendFormat(" ({0})", this.name);
 			}
 
 			if (this == pointedObj) {
-				sb += "  <---";
+				sb.Append("  <---");
 			}
 
-			sb += "\n";
+			sb.AppendLine();
 
 			indentation++;
 
@@ -836,23 +865,23 @@
 				} else {
 					appendIndentation();
 					if (obj instanceof StringValue) {
-						sb += "\"";
-						sb += obj.toString().replace("\n", "\\n");
-						sb += "\"";
+						sb.Append("\"");
+						sb.Append(obj.toString().replace("\n", "\\n"));
+						sb.Append("\"");
 					} else {
-						sb += obj.toString();
+						sb.Append(obj.toString());
 					}
 				}
 
 				if (i != this.content.length - 1) {
-					sb += ",";
+					sb.Append(",");
 				}
 
 				if ( !(obj instanceof Container) && obj == pointedObj ) {
-					sb += "  <---";
+					sb.Append("  <---");
 				}
 
-				sb += "\n";
+				sb.AppendLine();
 			}
 
 
@@ -868,15 +897,14 @@
 
 			if (Object.keys(onlyNamed).length > 0) {
 				appendIndentation();
-				sb += "\n";
-				sb += "-- named: --";
+				sb.AppendLine("-- named: --");
 
 				for (var key in onlyNamed){
 					if (!(onlyNamed[key] instanceof Container)) console.warn("Can only print out named Containers");
 					
 					var container = onlyNamed[key];
 					container.BuildStringOfHierarchy(sb, indentation, pointedObj);
-					sb += "\n";
+					sb.Append("\n");
 				}
 			}
 
@@ -884,7 +912,7 @@
 			indentation--;
 
 			appendIndentation();
-			sb += "]";
+			sb.Append("]");
 		}
 	}
 
@@ -1103,7 +1131,7 @@
 				return "Divert(null)";
 			} else {
 
-				var sb = '';
+				var sb = new StringBuilder;
 
 				var targetStr = this.targetPath.toString();
 	//			int? targetLineNum = DebugLineNumberOfPath (targetPath);
@@ -1112,20 +1140,20 @@
 					targetStr = "line " + targetLineNum;
 				}
 
-				sb += "Divert";
+				sb.Append("Divert");
 				if (this.pushesToStack) {
 					if (this.stackPushType == PushPopType.Function) {
-						sb += " function";
+						sb.Append(" function");
 					} else {
-						sb += " tunnel";
+						sb.Append(" tunnel");
 					}
 				}
 
-				sb += " (";
-				sb += targetStr;
-				sb += ")";
+				sb.Append(" (");
+				sb.Append(targetStr);
+				sb.Append(")");
 
-				return sb;
+				return sb.toString();
 			}
 		}
 	}
@@ -1296,13 +1324,13 @@
 			var coercedType = coercedParams[0].valueType;
 
 			//Originally CallType gets a type parameter taht is used to do some casting, but we can do without.
-			if (coercedType == ValueType$1.Int) {
+			if (coercedType == ValueType.Int) {
 				return this.CallType(coercedParams);
-			} else if (coercedType == ValueType$1.Float) {
+			} else if (coercedType == ValueType.Float) {
 				return this.CallType(coercedParams);
-			} else if (coercedType == ValueType$1.String) {
+			} else if (coercedType == ValueType.String) {
 				return this.CallType(coercedParams);
-			} else if (coercedType == ValueType$1.DivertTarget) {
+			} else if (coercedType == ValueType.DivertTarget) {
 				return this.CallType(coercedParams);
 			}
 
@@ -1353,7 +1381,7 @@
 			}
 		}
 		CoerceValuesToSingleType(parametersIn){
-			var valType = ValueType$1.Int;
+			var valType = ValueType.Int;
 
 			// Find out what the output type is
 			// "higher level" types infect both so that binary operations
@@ -1431,7 +1459,7 @@
 				var divertTargetsEqual = (d1, d2) => {
 					return d1.Equals(d2) ? 1 : 0;
 				};
-				this.AddOpToNativeFunc(this.Equal, 2, ValueType$1.DivertTarget, divertTargetsEqual);
+				this.AddOpToNativeFunc(this.Equal, 2, ValueType.DivertTarget, divertTargetsEqual);
 			}
 		}
 		AddOpFuncForType(valType, op){
@@ -1452,21 +1480,21 @@
 		}
 		
 		static AddIntBinaryOp(name, op){
-			this.AddOpToNativeFunc(name, 2, ValueType$1.Int, op);
+			this.AddOpToNativeFunc(name, 2, ValueType.Int, op);
 		}
 		static AddIntUnaryOp(name, op){
-			this.AddOpToNativeFunc(name, 1, ValueType$1.Int, op);
+			this.AddOpToNativeFunc(name, 1, ValueType.Int, op);
 		}
 		
 		static AddFloatBinaryOp(name, op){
-			this.AddOpToNativeFunc(name, 2, ValueType$1.Float, op);
+			this.AddOpToNativeFunc(name, 2, ValueType.Float, op);
 		}
 		static AddFloatUnaryOp(name, op){
-			this.AddOpToNativeFunc(name, 1, ValueType$1.Float, op);
+			this.AddOpToNativeFunc(name, 1, ValueType.Float, op);
 		}
 		
 		static AddStringBinaryOp(name, op){
-			this.AddOpToNativeFunc(name, 2, ValueType$1.String, op);
+			this.AddOpToNativeFunc(name, 2, ValueType.String, op);
 		}
 		
 		toString(){
@@ -1496,6 +1524,18 @@
 	NativeFunctionCall.Max      = "MAX";
 
 	NativeFunctionCall._nativeFunctions = null;
+
+	class Tag{
+		constructor(tagText){
+			this._text = tagText.toString() || '';
+		}
+		get text(){
+			return this._text;
+		}
+		toString(){
+			return "# " + this._text;
+		}
+	}
 
 	class Choice{
 		constructor(choice){
@@ -1724,6 +1764,9 @@
 					varAss.isGlobal = isGlobalVar;
 					return varAss;
 				}
+				if (propValue = obj["#"]){
+					return new Tag(propValue.toString());
+				}
 
 				if (obj["originalChoicePath"] != null)
 					return this.JObjectToChoice(obj);
@@ -1879,6 +1922,14 @@
 			var voidObj = obj;
 			if (voidObj instanceof Void)
 				return "void";
+		
+	//		var tag = obj as Tag;
+			var tag = obj;
+			if (tag instanceof Tag) {
+				var jObj = {};
+				jObj["#"] = tag.text;
+				return jObj;
+			}
 
 			// Used when serialising save state only
 	//		var choice = obj as Choice;
@@ -2142,13 +2193,13 @@
 		}
 	}
 
-	class CallStack$1{
+	class CallStack{
 		constructor(copyOrrootContentContainer){
 			this._threads = [];
 			this._threadCounter = 0;
 			this._threads.push(new Thread());
 			
-			if (copyOrrootContentContainer instanceof CallStack$1){
+			if (copyOrrootContentContainer instanceof CallStack){
 				this._threads = [];
 				
 				copyOrrootContentContainer._threads.forEach(otherThread => {
@@ -2530,6 +2581,10 @@
 					return null;
 			}
 			else{
+				if (typeof this._globalVariables[variableName] === 'undefined'){
+					throw new StoryException("Variable '" + variableName + "' doesn't exist, so can't be set.");
+				}
+				
 				var val = Value.Create(value);
 				if (val == null) {
 					if (value == null) {
@@ -2568,7 +2623,7 @@
 
 			this._evaluationStack = [];
 
-			this.callStack = new CallStack$1(story.rootContentContainer);
+			this.callStack = new CallStack(story.rootContentContainer);
 			this._variablesState = new VariablesState(this.callStack);
 
 			this._visitCounts = {};
@@ -2686,17 +2741,30 @@
 			return false;
 		}
 		get currentText(){
-			var sb = '';
+			var sb = new StringBuilder();
 			
 			this._outputStream.forEach(outputObj => {
 	//			var textContent = outputObj as StringValue;
 				var textContent = outputObj;
 				if (textContent instanceof StringValue) {
-					sb += textContent.value;
+					sb.Append(textContent.value);
 				}
 			});
 
-			return sb;
+			return sb.toString();
+		}
+		get currentTags(){
+			var tags = [];
+			
+			this._outputStream.forEach(outputObj => {
+	//			var tag = outputObj as Tag;
+				var tag = outputObj;
+				if (tag instanceof Tag) {
+					tags.push(tag.text);
+				}
+			});
+
+			return tags;
 		}
 		get outputStream(){
 			return this._outputStream;
@@ -2809,7 +2877,7 @@
 					c.threadAtGeneration = foundActiveThread;
 				} else {
 					var jSavedChoiceThread = jChoiceThreads[c.originalThreadIndex.toString()];
-					c.threadAtGeneration = new CallStack$1.Thread(jSavedChoiceThread, this.story);
+					c.threadAtGeneration = new CallStack.Thread(jSavedChoiceThread, this.story);
 				}
 			});
 		}
@@ -3094,7 +3162,7 @@
 				copy.currentErrors.push.apply(copy.currentErrors, this.currentErrors);
 			}
 
-			copy.callStack = new CallStack$1(this.callStack);
+			copy.callStack = new CallStack(this.callStack);
 			
 			copy._variablesState = new VariablesState(copy.callStack);
 			copy.variablesState.CopyFrom(this.variablesState);
@@ -3138,7 +3206,7 @@
 		constructor(jsonString){
 			super();
 			
-			this.inkVersionCurrent = 13;
+			this.inkVersionCurrent = 14;
 			this.inkVersionMinimumCompatible = 12;
 			
 			this._variableObservers = null;
@@ -3195,6 +3263,9 @@
 		get currentText(){
 			return this.state.currentText;
 		}
+		get currentTags(){
+			return this.state.currentTags;
+		}
 		get currentErrors(){
 			return this.state.currentErrors;
 		}
@@ -3217,6 +3288,10 @@
 		}
 		get canContinue(){
 			return this.state.currentContentObject != null && !this.state.hasError;
+		}
+		
+		get globalTags(){
+			return this.TagsAtStartOfFlowContainerWithPathString("");
 		}
 		
 		ToJsonString(){
@@ -3307,9 +3382,10 @@
 							// Cover cases that non-text generated content was evaluated last step
 							var currText = this.currentText;
 							var prevTextLength = stateAtLastNewline.currentText.length;
+							var prevTagCount = stateAtLastNewline.currentTags.length;
 
 							// Output has been extended?
-							if( currText !== stateAtLastNewline.currentText ) {
+							if( currText !== stateAtLastNewline.currentText || prevTagCount != this.currentTags.length ) {
 
 								// Original newline still exists?
 								if( currText.length >= prevTextLength && currText[prevTextLength-1] == '\n' ) {
@@ -3389,13 +3465,13 @@
 			return this.currentText;
 		}
 		ContinueMaximally(){
-			var sb = '';
+			var sb = new StringBuilder();
 
 			while (this.canContinue) {
-				sb += this.Continue();
+				sb.Append(this.Continue());
 			}
 
-			return sb;
+			return sb.toString();
 		}
 		ContentAtPath(path){
 			return this.mainContentContainer.ContentAtPath(path);
@@ -3790,14 +3866,14 @@
 					contentStackForString = contentStackForString.reverse();
 						
 					// Build string out of the content we collected
-					var sb = '';
+					var sb = new StringBuilder();
 					contentStackForString.forEach(c => {
-						sb += c.toString();
+						sb.Append(c.toString());
 					});
 
 					// Return to expression evaluation (from content mode)
 					this.state.inExpressionEvaluation = true;
-					this.state.PushEvaluationStack(new StringValue(sb));
+					this.state.PushEvaluationStack(new StringValue(sb.toString()));
 					break;
 
 				case ControlCommand.CommandType.ChoiceCount:
@@ -3995,9 +4071,9 @@
 				return false;
 			}
 		}
-		EvaluateFunction(functionName, textOutput, args){
-			//match the first signature of the function
-			if (typeof textOutput !== 'string') return this.EvaluateFunction(functionName, '', textOutput);
+		EvaluateFunction(functionName, args, returnTextOutput){
+			//EvaluateFunction behaves slightly differently than the C# version. In C#, you can pass a (second) parameter `out textOutput` to get the text outputted by the function. This is not possible in js. Instead, we maintain the regular signature (functionName, args), plus an optional third parameter returnTextOutput. If set to true, we will return both the textOutput and the returned value, as an object.
+			returnTextOutput = !!returnTextOutput;
 			
 			if (functionName == null) {
 				throw "Function is null";
@@ -4010,7 +4086,6 @@
 			try {
 				funcContainer = this.ContentAtPath(new Path$1(functionName));
 			} catch (e) {
-				console.log(e);
 				if (e.message.indexOf("not found") >= 0)
 					throw "Function doesn't exist: '" + functionName + "'";
 				else
@@ -4033,25 +4108,25 @@
 			this.state.callStack.currentElement.currentContentIndex = 0;
 
 			if (args != null) {
-				for (var i = 0; i < args.Length; i++) {
+				for (var i = 0; i < args.length; i++) {
 					if (!(typeof args[i] === 'number' || typeof args[i] === 'string')) {
 						throw "ink arguments when calling EvaluateFunction must be int, float or string";
 					}
 
-					this.state.evaluationStack.Add(Runtime.Value.Create(args[i]));
+					this.state.evaluationStack.push(Value.Create(args[i]));
 				}
 			}
 
 			// Jump into the function!
-			this.state.callStack.push(PushPopType.Function);
+			this.state.callStack.Push(PushPopType.Function);
 			this.state.currentContentObject = funcContainer;
 
 			// Evaluate the function, and collect the string output
-			var stringOutput = '';
+			var stringOutput = new StringBuilder();
 			while (this.canContinue) {
-				stringOutput += this.Continue();
+				stringOutput.Append(this.Continue());
 			}
-			textOutput = stringOutput.toString();
+			var textOutput = stringOutput.toString();
 
 			// Restore original stack
 			this.state.callStack = originalCallstack;
@@ -4066,10 +4141,13 @@
 				if (returnedObj == null)
 					returnedObj = poppedObj;
 			}
+			
+			//inkjs specific: since we change the type of return conditionally, we want to have only one return statement
+			var returnedValue = null;
 
 			if (returnedObj) {
 				if (returnedObj instanceof Void)
-					return null;
+					returnedValue = null;
 
 				// Some kind of value, if not void
 	//			var returnVal = returnedObj as Runtime.Value;
@@ -4078,15 +4156,15 @@
 				// DivertTargets get returned as the string of components
 				// (rather than a Path, which isn't public)
 				if (returnVal.valueType == ValueType.DivertTarget) {
-					return returnVal.valueObject.toString();
+					returnedValue = returnVal.valueObject.toString();
 				}
 
 				// Other types can just have their exact object type:
 				// int, float, string. VariablePointers get returned as strings.
-				return returnVal.valueObject;
+				returnedValue = returnVal.valueObject;
 			}
 
-			return null;
+			return (returnTextOutput) ? {'returned': returnedValue, 'output': textOutput} : returnedValue;
 		}
 		EvaluateExpression(exprContainer){
 			var startCallStackHeight = this.state.callStack.elements.length;
@@ -4237,7 +4315,7 @@
 							var errorPreamble = "ERROR: ";
 							//misses a bit about metadata, which isn't implemented
 
-	                        throw new errorPreamble + message;
+	                        throw new StoryException(errorPreamble + message);
 						}
 	                }
 	            }
@@ -4294,8 +4372,37 @@
 				});
 			}
 		}
+		TagsForContentAtPath(path){
+			return this.TagsAtStartOfFlowContainerWithPathString(path);
+		}
+		TagsAtStartOfFlowContainerWithPathString(pathString){
+			var path = new Path$1(pathString);
+
+			// Expected to be global story, knot or stitch
+	//		var flowContainer = ContentAtPath (path) as Container;
+			var flowContainer = this.ContentAtPath(path);
+
+			// First element of the above constructs is a compiled weave
+	//		var innerWeaveContainer = flowContainer.content [0] as Container;
+			var innerWeaveContainer = flowContainer.content[0];
+
+			// Any initial tag objects count as the "main tags" associated with that story/knot/stitch
+			var tags = null;
+			
+			innerWeaveContainer.content.every(c => {
+	//			var tag = c as Runtime.Tag;
+				var tag = c;
+				if (tag instanceof Tag) {
+					if (tags == null) tags = [];
+					tags.push(tag.text);
+					return true;
+				} else return false;
+			});
+
+			return tags;
+		}
 		BuildStringOfHierarchy(){
-			var sb = "";
+			var sb = new StringBuilder;
 
 			this.mainContentContainer.BuildStringOfHierarchy(sb, 0, this.state.currentContentObject);
 

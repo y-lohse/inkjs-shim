@@ -916,8 +916,9 @@
 		}
 	}
 
-	class Glue{
+	class Glue extends InkObject{
 		constructor(type){
+			super();
 			this.glueType = type;
 		}
 		get isLeft(){
@@ -3912,6 +3913,8 @@
 						if (overrideTunnelReturnTarget instanceof DivertTargetValue === false) {
 							if (popped instanceof Void === false){
 								throw "Expected void if ->-> doesn't override target";
+							} else {
+								overrideTunnelReturnTarget = null;
 							}
 						}
 					}
@@ -4218,7 +4221,7 @@
 		EvaluateExpression(exprContainer){
 			var startCallStackHeight = this.state.callStack.elements.length;
 
-			this.state.callStack.push(PushPopType.Tunnel);
+			this.state.callStack.Push(PushPopType.Tunnel);
 
 			this._temporaryEvaluationContainer = exprContainer;
 
@@ -4258,7 +4261,7 @@
 					if (!(fallbackFunctionContainer instanceof Container)) console.warn("Trying to call EXTERNAL function '" + funcName + "' which has not been bound, and fallback ink function could not be found.");
 
 					// Divert direct into fallback function and we're done
-					this.state.callStack.push(PushPopType.Function);
+					this.state.callStack.Push(PushPopType.Function);
 					this.state.divertedTargetObject = fallbackFunctionContainer;
 					return;
 

@@ -1538,8 +1538,9 @@
 
 	NativeFunctionCall._nativeFunctions = null;
 
-	class Tag{
+	class Tag extends InkObject{
 		constructor(tagText){
+			super();
 			this._text = tagText.toString() || '';
 		}
 		get text(){
@@ -4322,19 +4323,47 @@
 			if (typeof this._externals[funcName] === 'undefined') console.warn("Function '" + funcName + "' has not been bound.");
 			delete this._externals[funcName];
 		}
-		ValidateExternalBindings(containerOrObject){
+		ValidateExternalBindings(containerOrObject, missingExternals){
 			if (!containerOrObject){
-				this.ValidateExternalBindings(this._mainContentContainer);
+				var missingExternals = [];
+				this.ValidateExternalBindings(this._mainContentContainer, missingExternals);
 	            this._hasValidatedExternals = true;
+				
+				// No problem! Validation complete
+				if( missingExternals.length == 0 ) {
+					this._hasValidatedExternals = true;
+				} 
+
+				// Error for all missing externals
+				else {
+					var message = "Missing function binding for external";
+					message += (missingExternals.length > 1) ? "s" : "";
+					message += ": '";
+					message += missingExternals.join("', '");
+					message += "' ";
+					message += (this.allowExternalFunctionFallbacks) ? ", and no fallback ink function found." : " (ink fallbacks disabled)";
+						
+					var errorPreamble = "ERROR: ";
+					if (this._mainContentContainer.debugMetadata) {
+						errorPreamble += "'" + this._mainContentContainer.debugMetadata.fileName + "'";
+						errorPreamble += " line ";
+						errorPreamble += this._mainContentContainer.debugMetadata.startLineNumber;
+						errorPreamble += ": ";
+						
+						message = errorPreamble + message;
+					}
+
+					this.Error(message);
+				}
 			}
 			else if (containerOrObject instanceof Container){
 				var c = containerOrObject;
 				
 				c.content.forEach(innerContent => {
-					this.ValidateExternalBindings(innerContent);
+					this.ValidateExternalBindings(innerContent, missingExternals);
 				});
 				for (var key in c.namedContent){
-					this.ValidateExternalBindings(c.namedContent[key]);
+					this.ValidateExternalBindings(c.namedContent[key], missingExternals);
 				}
 			}
 			else{
@@ -4342,7 +4371,7 @@
 				//the following code is already taken care of above in this implementation
 	//			var container = o as Container;
 	//            if (container) {
-	//                ValidateExternalBindings (container);
+	//                ValidateExternalBindings (container, missingExternals);
 	//                return;
 	//            }
 
@@ -4352,22 +4381,13 @@
 	                var name = divert.targetPathString;
 
 	                if (!this._externals[name]) {
-
-	                    var fallbackFunction = this.mainContentContainer.namedContent[name];
-	                    var fallbackFound = typeof fallbackFunction !== 'undefined';
-						
-						var message = null;
-	                    if (!this.allowExternalFunctionFallbacks)
-	                        message = "Missing function binding for external '" + name + "' (ink fallbacks disabled)";
-	                    else if( !fallbackFound ) {
-	                        message = "Missing function binding for external '" + name + "', and no fallback ink function found.";
-	                    }
-						
-						if (message != null){
-							var errorPreamble = "ERROR: ";
-							//misses a bit about metadata, which isn't implemented
-
-	                        throw new StoryException(errorPreamble + message);
+						if( this.allowExternalFunctionFallbacks ) {
+							var fallbackFound = !!this.mainContentContainer.namedContent[name];
+							if( !fallbackFound ) {
+								missingExternals.push(name);
+							}
+						} else {
+							missingExternals.push(name);
 						}
 	                }
 	            }
@@ -4433,15 +4453,18 @@
 			// Expected to be global story, knot or stitch
 	//		var flowContainer = ContentAtPath (path) as Container;
 			var flowContainer = this.ContentAtPath(path);
-
-			// First element of the above constructs is a compiled weave
-	//		var innerWeaveContainer = flowContainer.content [0] as Container;
-			var innerWeaveContainer = flowContainer.content[0];
+			while(true) {
+				var firstContent = flowContainer.content[0];
+				if (firstContent instanceof Container)
+					flowContainer = firstContent;
+				else break;
+			}
+			
 
 			// Any initial tag objects count as the "main tags" associated with that story/knot/stitch
 			var tags = null;
 			
-			innerWeaveContainer.content.every(c => {
+			flowContainer.content.every(c => {
 	//			var tag = c as Runtime.Tag;
 				var tag = c;
 				if (tag instanceof Tag) {

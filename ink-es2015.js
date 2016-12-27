@@ -2,7 +2,7 @@
 	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
 	typeof define === 'function' && define.amd ? define('inkjs', ['exports'], factory) :
 	(factory((global.inkjs = global.inkjs || {})));
-}(this, function (exports) { 'use strict';
+}(this, (function (exports) { 'use strict';
 
 	class Path$1{
 		constructor(/*polymorphic constructor*/){
@@ -114,7 +114,10 @@
 
 			var componentStrings = componentsStr.split('.');
 			componentStrings.forEach(str => {
-				if (!isNaN(parseInt(str))){
+				//we need to distinguish between named components that start with a number, eg "42somewhere", and indexed components
+				//the normal parseInt won't do for the detection because it's too relaxed.
+				//see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/parseInt
+				if (/^(\-|\+)?([0-9]+|Infinity)$/.test(str)){
 					this.components.push(new Component(parseInt(str)));
 				}
 				else{
@@ -195,7 +198,7 @@
 	Path$1.parentId = "^";
 	Path$1.Component = Component;
 
-	class InkObject{
+	class Object$1{
 		constructor(){
 			this.parent = null;
 			this._path = null;
@@ -340,9 +343,9 @@
 		// Not used for coersion described above
 		DivertTarget: 3,
 		VariablePointer: 4
-	}
+	};
 
-	class AbstractValue extends InkObject{
+	class AbstractValue extends Object$1{
 		constructor(val){
 			super();
 			this._valueType;
@@ -617,7 +620,7 @@
 		}
 	}
 
-	class Container extends InkObject{//also implements INamedContent. Not sure how to do it cleanly in JS.
+	class Container extends Object$1{//also implements INamedContent. Not sure how to do it cleanly in JS.
 		constructor(){
 			super();
 			this.name = '';
@@ -752,7 +755,7 @@
 			}
 		}
 		AddToNamedContentOnly(namedContentObj){
-			if (namedContentObj instanceof InkObject === false) console.warn("Can only add Runtime.Objects to a Runtime.Container");
+			if (namedContentObj instanceof Object$1 === false) console.warn("Can only add Runtime.Objects to a Runtime.Container");
 			namedContentObj.parent = this;
 
 			this.namedContent[namedContentObj.name] = namedContentObj;
@@ -916,7 +919,7 @@
 		}
 	}
 
-	class Glue extends InkObject{
+	class Glue extends Object$1{
 		constructor(type){
 			super();
 			this.glueType = type;
@@ -945,9 +948,9 @@
 		Bidirectional: 0,
 		Left: 1,
 	    Right: 2
-	}
+	};
 
-	class ControlCommand extends InkObject{
+	class ControlCommand extends Object$1{
 		constructor(commandType){
 			super();
 			this._commandType = (typeof commandType != 'undefined') ? commandType : CommandType.NotSet;
@@ -1041,16 +1044,16 @@
 		StartThread: 16,
 		Done: 17,
 		End: 18,
-	}
+	};
 	CommandType.TOTAL_VALUES = Object.keys(CommandType).length - 1;//-1 because NotSet shoudn't count
 	ControlCommand.CommandType = CommandType;
 
 	let PushPopType = {
 		Tunnel: 0,
 		Function: 1,
-	}
+	};
 
-	class Divert extends InkObject{
+	class Divert extends Object$1{
 		constructor(stackPushType){
 			super();
 			this._targetPath;
@@ -1159,7 +1162,7 @@
 		}
 	}
 
-	class ChoicePoint extends InkObject{
+	class ChoicePoint extends Object$1{
 		constructor(onceOnly){
 			super();
 			this._pathOnChoice;
@@ -1223,7 +1226,7 @@
 		}
 	}
 
-	class VariableReference extends InkObject{
+	class VariableReference extends Object$1{
 		constructor(name){
 			super();
 			this.name = name;
@@ -1255,7 +1258,7 @@
 		}
 	}
 
-	class VariableAssignment extends InkObject{
+	class VariableAssignment extends Object$1{
 		constructor(variableName, isNewDeclaration){
 			super();
 			this._variableName = variableName || null;
@@ -1270,13 +1273,14 @@
 		}
 		
 		toString(){
-			return "VarAssign to " + this.variableName;;
+			return "VarAssign to " + this.variableName;
 		}
 	}
 
-	class Void extends InkObject{}
+	class Void extends Object$1{}
 
-	class NativeFunctionCall extends InkObject{
+	//misses delegates, probably the returns from function calls
+	class NativeFunctionCall extends Object$1{
 		constructor(name){
 			super();
 			this.name = name;
@@ -1331,7 +1335,7 @@
 			
 			parameters.forEach(p => {
 				if (p instanceof Void) throw new StoryException("Attempting to perform operation on a void value. Did you forget to 'return' a value from a function you called here?");
-			})
+			});
 
 			var coercedParams = this.CoerceValuesToSingleType(parameters);
 			var coercedType = coercedParams[0].valueType;
@@ -1538,7 +1542,7 @@
 
 	NativeFunctionCall._nativeFunctions = null;
 
-	class Tag extends InkObject{
+	class Tag extends Object$1{
 		constructor(tagText){
 			super();
 			this._text = tagText.toString() || '';
@@ -1608,7 +1612,7 @@
 			for (var key in dictionary){
 	//			var runtimeObj = keyVal.Value as Runtime.Object;
 				var runtimeObj = dictionary[key];
-				if (runtimeObj instanceof InkObject)
+				if (runtimeObj instanceof Object$1)
 					jsonObj[key] = this.RuntimeObjectToJToken(runtimeObj);
 			}
 
@@ -2367,6 +2371,9 @@
 		}
 	}
 
+	//still needs: 
+	// - varchanged events
+	// - see if the internal getenumarators are needed
 	class VariablesState{
 		constructor(callStack){
 			this._globalVariables = {};
@@ -2637,6 +2644,9 @@
 			this.story = story;
 			
 			this._outputStream = [];
+			this._outputStreamTextDirty = true;
+			this._outputStreamTagsDirty = true;
+			this.OutputStreamDirty();
 
 			this._evaluationStack = [];
 
@@ -2654,6 +2664,8 @@
 			this.previousRandom = 0;
 
 			this._currentChoices = [];
+			this._currentText = null;
+			this._currentTags = null;
 			this._currentErrors = null;
 			
 			this.didSafeExit = false;
@@ -2665,6 +2677,13 @@
 			this.GoToStart();
 		}
 		get currentChoices(){
+			// If we can continue generating text content rather than choices,
+			// then we reflect the choice list as being empty, since choices
+			// should always come at the end.
+			if ( this.canContinue ) return [];
+			return this._currentChoices;
+		}
+		get generatedChoices(){
 			return this._currentChoices;
 		}
 		get currentErrors(){
@@ -2687,6 +2706,9 @@
 		}
 		set currentContentObject(value){
 			this.callStack.currentElement.currentObject = value;
+		}
+		get canContinue(){
+			return this.currentContentObject != null && !this.hasError;
 		}
 		get hasError(){
 			return this.currentErrors != null && this.currentErrors.length > 0;
@@ -2762,30 +2784,39 @@
 			return false;
 		}
 		get currentText(){
-			var sb = new StringBuilder();
-			
-			this._outputStream.forEach(outputObj => {
-	//			var textContent = outputObj as StringValue;
-				var textContent = outputObj;
-				if (textContent instanceof StringValue) {
-					sb.Append(textContent.value);
-				}
-			});
+			if( this._outputStreamTextDirty ) {
+				var sb = new StringBuilder();
 
-			return sb.toString();
+				this._outputStream.forEach(outputObj => {
+		//			var textContent = outputObj as StringValue;
+					var textContent = outputObj;
+					if (textContent instanceof StringValue) {
+						sb.Append(textContent.value);
+					}
+				});
+
+				this._currentText = sb.toString();
+				this._outputStreamTextDirty = false;
+			}
+			
+			return this._currentText;
 		}
 		get currentTags(){
-			var tags = [];
-			
-			this._outputStream.forEach(outputObj => {
-	//			var tag = outputObj as Tag;
-				var tag = outputObj;
-				if (tag instanceof Tag) {
-					tags.push(tag.text);
-				}
-			});
+			if( this._outputStreamTagsDirty ) {
+				this._currentTags = [];
 
-			return tags;
+				this._outputStream.forEach(outputObj => {
+		//			var tag = outputObj as Tag;
+					var tag = outputObj;
+					if (tag instanceof Tag) {
+						this._currentTags.push(tag.text);
+					}
+				});
+				
+				this._outputStreamTagsDirty = false;
+			}
+			
+			return this._currentTags;
 		}
 		get outputStream(){
 			return this._outputStream;
@@ -2815,7 +2846,7 @@
 			var obj = {};
 
 			var choiceThreads = null;
-			this.currentChoices.forEach(c => {
+			this._currentChoices.forEach(c => {
 				c.originalChoicePath = c.choicePoint.path.componentsString;
 				c.originalThreadIndex = c.threadAtGeneration.threadIndex;
 
@@ -2838,7 +2869,7 @@
 
 			obj["outputStream"] = JsonSerialisation.ListToJArray(this._outputStream);
 
-			obj["currentChoices"] = JsonSerialisation.ListToJArray(this.currentChoices);
+			obj["currentChoices"] = JsonSerialisation.ListToJArray(this._currentChoices);
 			
 			if( this.divertedTargetObject != null )
 				obj["currentDivertTarget"] = this.divertedTargetObject.path.componentsString;
@@ -2872,6 +2903,7 @@
 			this._evaluationStack = JsonSerialisation.JArrayToRuntimeObjList(jObject["evalStack"]);
 
 			this._outputStream = JsonSerialisation.JArrayToRuntimeObjList(jObject["outputStream"]);
+			this.OutputStreamDirty();
 
 	//		currentChoices = Json.JArrayToRuntimeObjList<Choice>((JArray)jObject ["currentChoices"]);
 			this._currentChoices = JsonSerialisation.JArrayToRuntimeObjList(jObject["currentChoices"]);
@@ -2890,7 +2922,7 @@
 	//		var jChoiceThreads = jObject["choiceThreads"] as JObject;
 			var jChoiceThreads = jObject["choiceThreads"];
 			
-			this.currentChoices.forEach(c => {
+			this._currentChoices.forEach(c => {
 				c.choicePoint = this.story.ContentAtPath(new Path$1(c.originalChoicePath));
 
 				var foundActiveThread = this.callStack.ThreadWithIndex(c.originalThreadIndex);
@@ -2927,6 +2959,7 @@
 		}
 		ResetOutput(){
 			this._outputStream.length = 0;
+			this.OutputStreamDirty();
 		}
 		PushEvaluationStack(obj){
 			this.evaluationStack.push(obj);
@@ -2962,6 +2995,7 @@
 			}
 
 			this.PushToOutputStreamIndividual(obj);
+			this.OutputStreamDirty();
 		}
 		TrySplittingHeadTailWhitespace(single){
 			var str = single.value;
@@ -3082,6 +3116,7 @@
 
 			if (includeInOutput) {
 				this._outputStream.push(obj);
+				this.OutputStreamDirty();
 			}
 		}
 		TrimNewlinesFromOutputStream(rightGlueToStopAt){
@@ -3140,6 +3175,8 @@
 					}
 				}
 			}
+			
+			this.OutputStreamDirty();
 		}
 		TrimFromExistingGlue(){
 			var i = this.currentGlueIndex;
@@ -3151,6 +3188,8 @@
 				else
 					i++;
 			}
+			
+			this.OutputStreamDirty();
 		}
 		RemoveExistingGlue(){
 			for (var i = this._outputStream.length - 1; i >= 0; i--) {
@@ -3161,6 +3200,8 @@
 					break;
 				}
 			}
+			
+			this.OutputStreamDirty();
 		}
 		ForceEnd(){
 			while (this.callStack.canPopThread)
@@ -3169,7 +3210,7 @@
 			while (this.callStack.canPop)
 				this.callStack.Pop();
 
-			this.currentChoices.length = 0;
+			this._currentChoices.length = 0;
 			
 			this.currentContentObject = null;
 			this.previousContentObject = null;
@@ -3178,7 +3219,7 @@
 		}
 		SetChosenPath(path){
 			// Changing direction, assume we need to clear current set of choices
-			this.currentChoices.length = 0;
+			this._currentChoices.length = 0;
 
 			this.currentPath = path;
 
@@ -3265,6 +3306,10 @@
 
 			this._currentErrors.push(message);
 		}
+		OutputStreamDirty(){
+			this._outputStreamTextDirty = true;
+			this._outputStreamTagsDirty = true;
+		}
 		VisitCountAtPathString(pathString){
 			var visitCountOut;
 			if (visitCountOut = this.visitCounts[pathString])
@@ -3276,7 +3321,9 @@
 			var copy = new StoryState(this.story);
 
 			copy.outputStream.push.apply(copy.outputStream, this._outputStream);
-			copy.currentChoices.push.apply(copy.currentChoices, this.currentChoices);
+			this.OutputStreamDirty();
+			
+			copy._currentChoices.push.apply(copy._currentChoices, this._currentChoices);
 
 			if (this.hasError) {
 				copy.currentErrors = [];
@@ -3323,7 +3370,7 @@
 		};
 	}
 
-	class Story extends InkObject{
+	class Story extends Object$1{
 		constructor(jsonString){
 			super();
 			
@@ -3332,6 +3379,7 @@
 			
 			this._variableObservers = null;
 			this._externals = {};
+			this._prevContainerSet = null;
 			
 			if (jsonString instanceof Container){
 				this._mainContentContainer = jsonString;
@@ -3408,7 +3456,7 @@
 			}
 		}
 		get canContinue(){
-			return this.state.currentContentObject != null && !this.state.hasError;
+			return this.state.canContinue;
 		}
 		
 		get globalTags(){
@@ -3532,7 +3580,13 @@
 							// We're going to continue stepping in case we see glue or some
 							// non-text content such as choices.
 							if( this.canContinue ) {
-								stateAtLastNewline = this.StateSnapshot();
+									// Don't bother to record the state beyond the current newline.
+									// e.g.:
+									// Hello world\n			// record state at the end of here
+									// ~ complexCalculation()   // don't actually need this unless it generates text
+									if( stateAtLastNewline == null ) {
+	                                	stateAtLastNewline = this.StateSnapshot();
+									}	
 							} 
 
 							// Can't continue, so we're about to exit - make sure we
@@ -3559,7 +3613,7 @@
 						this.Error("Thread available to pop, threads should always be flat by the end of evaluation?");
 					}
 
-					if( this.currentChoices.length == 0 && !this.state.didSafeExit && this._temporaryEvaluationContainer == null) {
+					if( this.state.generatedChoices.length == 0 && !this.state.didSafeExit && this._temporaryEvaluationContainer == null) {
 						if( this.state.callStack.CanPop(PushPopType.Tunnel) ) {
 							this.Error("unexpectedly reached end of content. Do you need a '->->' to return from a tunnel?");
 						} else if( this.state.callStack.CanPop(PushPopType.Function) ) {
@@ -3654,7 +3708,7 @@
 			if (choicePoint instanceof ChoicePoint) {
 				var choice = this.ProcessChoice(choicePoint);
 				if (choice) {
-					this.state.currentChoices.push(choice);
+					this.state.generatedChoices.push(choice);
 				}
 
 				currentContentObj = null;
@@ -3720,12 +3774,12 @@
 				return;
 	            
 			// First, find the previously open set of containers
-			var prevContainerSet = [];
+			if (this._prevContainerSet == null) this._prevContainerSet = [];
 			if (previousContentObject) {
 	//			Container prevAncestor = previousContentObject as Container ?? previousContentObject.parent as Container;
 				var prevAncestor = (previousContentObject instanceof Container) ? previousContentObject : previousContentObject.parent;
 				while (prevAncestor instanceof Container) {
-					prevContainerSet.push(prevAncestor);
+					this._prevContainerSet.push(prevAncestor);
 	//				prevAncestor = prevAncestor.parent as Container;
 					prevAncestor = prevAncestor.parent;
 				}
@@ -3736,7 +3790,7 @@
 			var currentChildOfContainer = newContentObject;
 	//		Container currentContainerAncestor = currentChildOfContainer.parent as Container;
 			var currentContainerAncestor = currentChildOfContainer.parent;
-			while (currentContainerAncestor instanceof Container && prevContainerSet.indexOf(currentContainerAncestor) < 0) {
+			while (currentContainerAncestor instanceof Container && this._prevContainerSet.indexOf(currentContainerAncestor) < 0) {
 
 				// Check whether this ancestor container is being entered at the start,
 				// by checking whether the child object is the first.
@@ -4017,7 +4071,7 @@
 					break;
 
 				case ControlCommand.CommandType.ChoiceCount:
-					var choiceCount = this.currentChoices.length;
+					var choiceCount = this.state.generatedChoices.length;
 					this.state.PushEvaluationStack(new IntValue(choiceCount));
 					break;
 
@@ -4718,4 +4772,6 @@
 
 	exports.Story = Story;
 
-}));
+	Object.defineProperty(exports, '__esModule', { value: true });
+
+})));

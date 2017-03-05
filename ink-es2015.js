@@ -334,15 +334,327 @@
 		}
 	}
 
+	class StringBuilder{
+		constructor(str){
+			str = (typeof str !== 'undefined') ? str.toString() : '';
+			this._string = str;
+		}
+		get Length(){
+			return this._string.length;
+		}
+		Append(str){
+			this._string += str;
+		}
+		AppendLine(str){
+			if (typeof str !== 'undefined') this.Append(str);
+			this._string += "\n";
+		}
+		AppendFormat(format){
+			//taken from http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format
+			var args = Array.prototype.slice.call(arguments, 1);
+			return format.replace(/{(\d+)}/g, function(match, number){
+				return typeof args[number] != 'undefined' ? args[number] : match;
+			});
+		}
+		toString(){
+			return this._string;
+		}
+	}
+
+	class RawListItem{
+		constructor(fullNameOrOriginName, itemName){
+			if (itemName !== undefined){
+				this.originName = fullNameOrOriginName;
+				this.itemName = itemName;
+			}
+			else{
+				var nameParts = fullNameOrOriginName.toString().split('.');
+	            this.originName = nameParts[0];
+	            this.itemName = nameParts[1];
+			}
+		}
+		static Null(){
+			return new RawListItem(null, null);
+		}
+		isNull(){
+			return this.originName == null && this.itemName == null;
+		}
+		get fullName(){
+			return ((this.originName !== null) ? this.originName : "?") + "." + this.itemName;
+		}
+		toString(){
+			return this.fullname;
+		}
+		Equals(obj){
+			if (obj instanceof RawListItem) {
+	//			var otherItem = (RawListItem)obj;
+				var otherItem = obj;
+				return otherItem.itemName   == this.itemName 
+					&& otherItem.originName == this.originName;
+			}
+
+			return false;
+		}
+		//GetHashCode not implemented
+		toString(){
+			//WARNING: experimental. RawListItem are structs and are used as keys inside hashes. In js, we can't use an object as a key, as the key needs to be a string. C# gets around that with the internal GetHashCode, and the js equivalent to that is toString. So here, toString acts as C#'s GetHashCode
+			var originCode = '0';
+			var itemCode = (this.itemName) ? this.itemName.toString() : 'null';
+			if (this.originName != null)
+				originCode = this.originName.toString();
+			
+			return originCode + itemCode;
+		}
+	}
+
+	//in C#, rawlists are based on dictionnary; the equivalent of a dictionnary in js is Object, but we can't use that or it will conflate dictionnary items and RawList class properties.
+	//instead RawList-js has a special _values property wich contains the actual "Dictionnary", and a few Dictionnary methods are re-implemented on RawList. This also means directly iterating over the RawList won't work as expected. Maybe we can return a proxy if that's required.
+	class RawList{
+		constructor(otherListOrSingleElement){
+			this._keys = {};
+			this._values = {};
+			this.origins = null;
+			this._originNames = null;
+			
+			//polymorphioc constructor
+			if (otherListOrSingleElement){
+				if (otherListOrSingleElement instanceof RawList){
+					var otherList = otherListOrSingleElement;
+					otherList.forEach((kv)=>{
+						this.Add(kv.Key, kv.Value);
+					});
+					
+					this._originNames = otherList._originNames;
+				}
+				else if (otherListOrSingleElement.hasOwnProperty('Key') && otherListOrSingleElement.hasOwnProperty('Value')){
+					var singleElement = otherListOrSingleElement;
+					this.Add(singleElement.Key, singleElement.Value);
+				}
+			}
+		}
+		forEach(fn){
+			for (var key in this._values){
+				fn({
+					Key: this._keys[key],
+					Value: this._values[key]
+				});
+			}
+		}
+		ContainsKey(key){
+			return key in this._values;
+		}
+		Add(key, value){
+			this._keys[key] = key;
+			this._values[key] = value;
+		}
+		Remove(key){
+			delete this._values[key];
+			delete this._keys[key];
+		}
+		get Count(){
+			return Object.keys(this._values).length;
+		}
+		get originOfMaxItem(){
+			if (this.origins == null) return null;
+
+			var maxOriginName = this.maxItem.Key.originName;
+			var result = null;
+			this.origins.every(function(origin){
+				if (origin.name == maxOriginName){
+					result = origin;
+					return false;
+				}
+				else return true;
+			});
+			
+			return result;
+		}
+		get originNames(){
+			if (this.Count > 0) {
+				if (this._originNames == null && this.Count > 0)
+					this._originNames = [];
+				else
+					this._originNames.length = 0;
+
+				this.forEach((itemAndValue)=>{
+					this._originNames.push(itemAndValue.Key.originName);
+				});
+			}
+
+			return this._originNames;
+		}
+		SetInitialOriginName(initialOriginName){
+			this._originNames = [initialOriginName];
+		}
+		SetInitialOriginNames(initialOriginNames){
+			this._originNames = initialOriginNames.slice();//store a copy
+		}
+		get maxItem(){
+			var max = {
+				Key: null,
+				Value: null
+			};
+			this.forEach(function(kv){
+				if (max.Key === null || kv.Value > max.Value)
+					max = kv;
+			});
+			
+			return max;
+		}
+		get minItem(){
+			var min = {
+				Key: null,
+				Value: null
+			};
+			this.forEach(function(kv){
+				if (min.Key === null || kv.Value < min.Value)
+					min = kv;
+			});
+			
+			return min;
+		}
+		get inverse(){
+			var list = new RawList();
+			if (this.origins != null) {
+				this.origins.forEach((origin)=>{
+					origin.items.forEach((itemAndValue)=>{
+						if (!this.ContainsKey(itemAndValue.Key))
+							list.Add(itemAndValue.Key, itemAndValue.Value);
+					});
+				});
+			}
+			return list;
+		}
+		get all(){
+			var list = new RawList();
+			if (this.origins != null) {
+				this.origins.forEach(function(origin){
+					origin.items.forEach(function(itemAndValue){
+						list.Add(itemAndValue.Key, itemAndValue.Value);
+					});
+				});
+			}
+			return list;
+		}
+		Union(otherList){
+			var union = new RawList(this);
+			otherList.forEach(function(kv){
+				union.Add(kv.Key, kv.Value);
+			});
+			return union;
+		}
+		Intersect(otherList){
+			var intersection = new RawList();
+			this.forEach(function(kv){
+				if (otherList.ContainsKey(kv.Key))
+					intersection.Add(kv.Key, kv.Value);
+			});
+			return intersection;
+		}
+		Without(listToRemove){
+			var result = new RawList(this);
+			listToRemove.forEach(function(kv){
+				result.Remove(kv.Key);
+			});
+			return result;
+		}
+		Contains(otherList){
+			var contains = true;
+			otherList.forEach((kv)=>{
+				if (!this.ContainsKey(kv.Key)) contains = false;
+			});
+			return contains;
+		}
+		GreaterThan(otherList){
+			if (this.Count == 0) return false;
+			if (otherList.Count == 0) return true;
+
+			// All greater
+			return this.minItem.Value > otherList.maxItem.Value;
+		}
+		GreaterThanOrEquals(otherList){
+			if (this.Count == 0) return false;
+			if (otherList.Count == 0) return true;
+
+			return this.minItem.Value >= otherList.minItem.Value
+				&& this.maxItem.Value >= otherList.maxItem.Value;
+		}
+		LessThan(otherList){
+			if (otherList.Count == 0) return false;
+			if (this.Count == 0) return true;
+
+			return this.maxItem.Value < otherList.minItem.Value;
+		}
+		LessThanOrEquals(otherList){
+			if (otherList.Count == 0) return false;
+			if (this.Count == 0) return true;
+
+			return this.maxItem.Value <= otherList.maxItem.Value
+				&& this.minItem.Value <= otherList.minItem.Value;
+		}
+		MaxAsList(){
+			if (this.Count > 0)
+				return new RawList(this.maxItem);
+			else
+				return new RawList();
+		}
+		MinAsList(){
+			if (this.Count > 0)
+				return new RawList(this.minItem);
+			else
+				return new RawList();
+		}
+		Equals(other){
+	//		var otherRawList = other as RawList;
+			var otherRawList = other;
+			if (otherRawList instanceof RawList === false) return false;
+			if (otherRawList.Count != this.Count) return false;
+
+			var equals = true;
+			this.forEach(function(kv){
+				if (!otherRawList.ContainsKey(kv.Key))
+					equals = false;
+			});
+
+			return equals;
+		}
+		//GetHashCode not implemented
+		toString(){
+			var ordered = [];
+			this.forEach(function(kv){
+				ordered.push(kv);
+			});
+			ordered = ordered.sort((a, b) => {
+				return (a.Value === b.Value) ? 0 : ((a.Value > b.Value) ? 1 : -1);
+			});
+
+			var sb = new StringBuilder();
+			for (var i = 0; i < ordered.length; i++) {
+				if (i > 0)
+					sb.Append(", ");
+
+				var item = ordered[i].Key;
+				sb.Append(item.itemName);
+			}
+
+			return sb.toString();
+		}
+		//casting a RawList to a Number, for somereason, actually gives a number. This messes up the type detection when creating a Value from a RawList. Returning NaN here prevents that.
+		valueOf(){
+			return NaN;
+		}
+	}
+
 	var ValueType = {
 		// Used in coersion
 		Int: 0,
 		Float: 1,
-		String: 2,
+		List: 2,
+		String: 3,
 
 		// Not used for coersion described above
-		DivertTarget: 3,
-		VariablePointer: 4
+		DivertTarget: 4,
+		VariablePointer: 5
 	};
 
 	class AbstractValue extends Object$1{
@@ -380,12 +692,14 @@
 				return new StringValue(val);
 			} else if (val instanceof Path$1) {
 				return new DivertTargetValue(val);
+			} else if (val instanceof RawList) {
+				return new ListValue(val);
 			}
 		
 			return null;
 		}
 		Copy(val){
-			return this.Create(val);
+			return AbstractValue.Create(val);
 		}
 	}
 
@@ -585,38 +899,85 @@
 		}
 	}
 
+	class ListValue extends Value{
+		get valueType(){
+			return ValueType.List;
+		}
+		get isTruthy(){
+			var isTruthy = false;
+			this.value.forEach(function(kv){
+				var listItemIntValue = kv.Value;
+				if (listItemIntValue != 0)
+					isTruthy = true; 
+			});
+			return isTruthy;
+		}
+		Cast(newType){
+			 if (newType == ValueType.Int) {
+				var max = this.value.maxItem;
+				if( max.Key.isNull )
+					return new IntValue(0);
+				else
+					return new IntValue(max.Value);
+			}
+
+			else if (newType == ValueType.Float) {
+				var max = this.value.maxItem;
+				if (max.Key.isNull)
+					return new FloatValue(0.0);
+				else
+					return new FloatValue(parseFloat(max.Value));
+			}
+
+			else if (newType == ValueType.String) {
+				var max = value.maxItem;
+				if (max.Key.isNull)
+					return new StringValue("");
+				else {
+					return new StringValue(max.Key.toString());
+				}
+			}
+
+			if (newType == this.valueType)
+				return this;
+
+			throw "Unexpected type cast of Value to new ValueType";
+		}
+		constructor(listOrSingleItem, singleValue){
+			super(null);
+			
+			this._valueType = ValueType.List;
+			
+			if (listOrSingleItem instanceof RawList){
+				this.value = new RawList(listOrSingleItem);
+			}
+			else if (listOrSingleItem !== undefined && singleValue !== undefined){
+				this.value = new RawList({
+					Key: listOrSingleItem,
+					Value: singleValue
+				});
+			}
+			else{
+				this.value = new RawList();
+			}
+		}
+		static RetainListOriginsForAssignment(oldValue, newValue){
+	//		var oldList = oldValue as ListValue;
+			var oldList = oldValue;
+	//		var newList = newValue as ListValue;
+			var newList = newValue;
+
+			// When assigning the emtpy list, try to retain any initial origin names
+			if (oldList instanceof ListValue && newList instanceof ListValue && newList.value.Count == 0)
+				newList.value.SetInitialOriginNames(oldList.value.originNames);
+		}
+	}
+
 	class StoryException extends Error{
 		constructor(message) {
 			super(message);
 			this.message = message;
 			this.name = 'StoryException';
-		}
-	}
-
-	class StringBuilder{
-		constructor(str){
-			str = (typeof str !== 'undefined') ? str.toString() : '';
-			this._string = str;
-		}
-		get Length(){
-			return this._string.length;
-		}
-		Append(str){
-			this._string += str;
-		}
-		AppendLine(str){
-			if (typeof str !== 'undefined') this.Append(str);
-			this._string += "\n";
-		}
-		AppendFormat(format){
-			//taken from http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format
-			var args = Array.prototype.slice.call(arguments, 1);
-			return format.replace(/{(\d+)}/g, function(match, number){
-				return typeof args[number] != 'undefined' ? args[number] : match;
-			});
-		}
-		toString(){
-			return this._string;
 		}
 	}
 
@@ -1021,6 +1382,12 @@
 		static End(){
 			return new ControlCommand(CommandType.End);
 		}
+		static ListFromInt(){
+			return new ControlCommand(CommandType.ListFromInt);
+		}
+		static ListRange(){
+			return new ControlCommand(CommandType.ListRange);
+		}
 	}
 
 	var CommandType = {
@@ -1044,6 +1411,8 @@
 		StartThread: 16,
 		Done: 17,
 		End: 18,
+		ListFromInt: 19,
+		ListRange: 20,
 	};
 	CommandType.TOTAL_VALUES = Object.keys(CommandType).length - 1;//-1 because NotSet shoudn't count
 	ControlCommand.CommandType = CommandType;
@@ -1333,14 +1702,21 @@
 				throw "Unexpected number of parameters";
 			}
 			
+			var hasList  = false;
 			parameters.forEach(p => {
 				if (p instanceof Void) throw new StoryException("Attempting to perform operation on a void value. Did you forget to 'return' a value from a function you called here?");
+				if (p instanceof ListValue)
+					hasList = true;
 			});
+			
+			if (parameters.length == 2 && hasList){
+				return this.CallBinaryListOperation(parameters);
+			}
 
 			var coercedParams = this.CoerceValuesToSingleType(parameters);
 			var coercedType = coercedParams[0].valueType;
 
-			//Originally CallType gets a type parameter taht is used to do some casting, but we can do without.
+			//Originally CallType gets a type parameter that is used to do some casting, but we can do without.
 			if (coercedType == ValueType.Int) {
 				return this.CallType(coercedParams);
 			} else if (coercedType == ValueType.Float) {
@@ -1348,6 +1724,8 @@
 			} else if (coercedType == ValueType.String) {
 				return this.CallType(coercedParams);
 			} else if (coercedType == ValueType.DivertTarget) {
+				return this.CallType(coercedParams);
+			} else if (coercedType == ValueType.List) {
 				return this.CallType(coercedParams);
 			}
 
@@ -1365,7 +1743,7 @@
 
 				var opForTypeObj = this._operationFuncs[valType];
 				if (!opForTypeObj) {
-					throw new StoryException("Can not perform operation '"+this.name+"' on "+valType);
+					throw new StoryException("Cannot perform operation '"+this.name+"' on "+valType);
 				}
 
 				// Binary
@@ -1397,8 +1775,70 @@
 				throw "Unexpected number of parameters to NativeFunctionCall: " + parametersOfSingleType.length;
 			}
 		}
+		CallBinaryListOperation(parameters)
+		{
+			// List-Int addition/subtraction returns a List (e.g. "alpha" + 1 = "beta")
+			if ((this.name == "+" || this.name == "-") && parameters[0] instanceof ListValue && parameters[1] instanceof IntValue)
+				return this.CallListIncrementOperation(parameters);
+
+	//		var v1 = parameters [0] as Value;
+			var v1 = parameters[0];
+	//		var v2 = parameters [1] as Value;
+			var v2 = parameters[1];
+
+			// And/or with any other type requires coerscion to bool (int)
+			if ((this.name == "&&" || this.name == "||") && (v1.valueType != ValueType.List || v2.valueType != ValueType.List)) {
+	//			var op = _operationFuncs [ValueType.Int] as BinaryOp<int>;
+				var op = this._operationFuncs[ValueType.Int];
+				var result = op(v1.isTruthy ? 1 : 0, v2.isTruthy ? 1 : 0);
+				return parseInt(result);
+			}
+
+			// Normal (list • list) operation
+			if (v1.valueType == ValueType.List && v2.valueType == ValueType.List)
+				return this.CallType([v1, v2]);
+
+			throw new StoryException("Can not call use '" + this.name + "' operation on " + v1.valueType + " and " + v2.valueType);
+		}
+		CallListIncrementOperation(listIntParams)
+		{
+			var listVal = listIntParams[0];
+			var intVal = listIntParams[1];
+
+
+			var resultRawList = new RawList();
+
+			listVal.value.forEach(listItemWithValue => {
+				var listItem = listItemWithValue.Key;
+				var listItemValue = listItemWithValue.Value;
+
+				// Find + or - operation
+				var intOp = this._operationFuncs[ValueType.Int];
+
+				// Return value unknown until it's evaluated
+				var targetInt = intOp(listItemValue, intVal.value);
+
+				// Find this item's origin (linear search should be ok, should be short haha)
+				var itemOrigin = null;
+				listVal.value.origins.forEach(function(origin){
+					if (origin.name == listItem.originName) {
+						itemOrigin = origin;
+						return false;
+					}
+				});
+				if (itemOrigin != null) {
+					var incrementedItem = itemOrigin.TryGetItemWithValue(targetInt);
+					if (incrementedItem.exists)
+						resultRawList.Add(incrementedItem.item, targetInt);
+				}
+			});
+
+			return new ListValue(resultRawList);
+		}
 		CoerceValuesToSingleType(parametersIn){
 			var valType = ValueType.Int;
+			
+			var specialCaseList = null;
 
 			// Find out what the output type is
 			// "higher level" types infect both so that binary operations
@@ -1409,14 +1849,42 @@
 				if (val.valueType > valType) {
 					valType = val.valueType;
 				}
+				
+				if (val.valueType == ValueType.List) {
+	//				 specialCaseList = val as ListValue;
+					 specialCaseList = val;
+				}
 			});
 
 			// Coerce to this chosen type
 			var parametersOut = [];
-			parametersIn.forEach(val => {
-				var castedValue = val.Cast(valType);
-				parametersOut.push(castedValue);
-			});
+			
+			if (valType == ValueType.List) {
+				parametersIn.forEach(function(val){
+					if (val.valueType == ValueType.List) {
+						parametersOut.push(val);
+					} else if (val.valueType == ValueType.Int) {
+						var intVal = parseInt(val.valueObject);
+						var list = specialCaseList.value.originOfMaxItem;
+
+						var item = list.TryGetItemWithValue(intVal);
+						if (item.exists) {
+							var castedValue = new ListValue(item.item, intVal);
+							parametersOut.push(castedValue);
+						} else
+							throw new StoryException("Could not find List item with the value " + intVal + " in " + list.name);
+					} else
+						throw new StoryException("Cannot mix Lists and " + val.valueType + " values in this operation");
+				});
+			} 
+
+			// Normal Coercing (with standard casting)
+			else {
+				parametersIn.forEach(function(val){
+					var castedValue = val.Cast(valType);
+					parametersOut.push(castedValue);
+				});
+			}
 
 			return parametersOut;
 		}
@@ -1471,6 +1939,29 @@
 				// String operations
 				this.AddStringBinaryOp(this.Add,     (x, y) => {return x + y}); // concat
 				this.AddStringBinaryOp(this.Equal,   (x, y) => {return x === y ? 1 : 0});
+				
+				this.AddListBinaryOp(this.Add, 		 (x, y) => {return x.Union(y)});
+				this.AddListBinaryOp(this.And, 		 (x, y) => {return x.Union(y)});
+				this.AddListBinaryOp(this.Subtract,  (x, y) => {return x.Without(y)});
+				this.AddListBinaryOp(this.Has, 		 (x, y) => {return x.Contains(y) ? 1 : 0});
+				this.AddListBinaryOp(this.Hasnt, 	 (x, y) => {return x.Contains(y) ? 0 : 1});
+				this.AddListBinaryOp(this.Intersect, (x, y) => {return x.Intersect(y)});
+				
+				this.AddListBinaryOp(this.Equal, 				(x, y) => {return x.Equals(y) ? 1 : 0});
+				this.AddListBinaryOp(this.Greater, 				(x, y) => {return x.GreaterThan(y) ? 1 : 0});
+				this.AddListBinaryOp(this.Less, 				(x, y) => {return x.LessThan(y) ? 1 : 0});
+				this.AddListBinaryOp(this.GreaterThanOrEquals, 	(x, y) => {return x.GreaterThanOrEquals(y) ? 1 : 0});
+				this.AddListBinaryOp(this.LessThanOrEquals, 	(x, y) => {return x.LessThanOrEquals(y) ? 1 : 0});
+				this.AddListBinaryOp(this.NotEquals, 			(x, y) => {return !x.Equals(y) ? 1 : 0});
+				
+				this.AddListUnaryOp(this.Not, (x) => {return x.Count == 0 ? 1 : 0});
+
+				this.AddListUnaryOp(this.Invert, (x) => {return x.inverse});
+				this.AddListUnaryOp(this.All, (x) => {return x.all});
+				this.AddListUnaryOp(this.ListMin, (x) => {return x.MinAsList()});
+				this.AddListUnaryOp(this.ListMax, (x) => {return x.MaxAsList()});
+				this.AddListUnaryOp(this.Count,  (x) => {return x.Count});
+				this.AddListUnaryOp(this.ValueOfList,  (x) => {return x.maxItem.Value});
 
 				// Special case: The only operation you can do on divert target values
 				var divertTargetsEqual = (d1, d2) => {
@@ -1514,6 +2005,13 @@
 			this.AddOpToNativeFunc(name, 2, ValueType.String, op);
 		}
 		
+		static AddListBinaryOp(name, op){
+			this.AddOpToNativeFunc(name, 2, ValueType.List, op);
+		}
+		static AddListUnaryOp(name, op){
+			this.AddOpToNativeFunc(name, 1, ValueType.List, op);
+		}
+		
 		toString(){
 			return "Native '" + this.name + "'";
 		}
@@ -1524,7 +2022,7 @@
 	NativeFunctionCall.Divide   = "/";
 	NativeFunctionCall.Multiply = "*";
 	NativeFunctionCall.Mod      = "%";
-	NativeFunctionCall.Negate   = "~";
+	NativeFunctionCall.Negate   = "_";
 
 	NativeFunctionCall.Equal    = "==";
 	NativeFunctionCall.Greater  = ">";
@@ -1539,6 +2037,17 @@
 
 	NativeFunctionCall.Min      = "MIN";
 	NativeFunctionCall.Max      = "MAX";
+
+	NativeFunctionCall.Has      = "?";
+	NativeFunctionCall.Hasnt    = "!?";
+	NativeFunctionCall.Intersect = "^";
+
+	NativeFunctionCall.ListMin   = "LIST_MIN";
+	NativeFunctionCall.ListMax   = "LIST_MAX";
+	NativeFunctionCall.All       = "LIST_ALL";
+	NativeFunctionCall.Count     = "LIST_COUNT";
+	NativeFunctionCall.ValueOfList = "LIST_VALUE";
+	NativeFunctionCall.Invert    = "LIST_INVERT";
 
 	NativeFunctionCall._nativeFunctions = null;
 
@@ -1572,6 +2081,128 @@
 		}
 		get sourcePath(){
 			return this.choicePoint.path.componentsString;
+		}
+	}
+
+	class ListDefinition{
+		constructor(name, items){
+			this._name = name || '';
+			this._items = null;
+			this._rawListItemsKeys = null;
+			this._itemNameToValues = items || {};
+		}
+		get name(){
+			return this._name;
+		}
+		get items(){
+			if (this._items == null){
+				this._items = {};
+				this._rawListItemsKeys = {};
+				for (var key in this._itemNameToValues){
+					var item = new RawListItem(this.name, key);
+					this._rawListItemsKeys[item] = item;
+					this._items[item] = this._itemNameToValues[key];
+				}
+			}
+			this._items.forEach = this.forEachItems.bind(this);
+			
+			return this._items;
+		}
+		forEachItems(fn){
+			for (var key in this._rawListItemsKeys){
+				fn({
+					Key: this._rawListItemsKeys[key],
+					Value: this._items[key]
+				});
+			}
+		}
+		ValueForItem(item){
+			var intVal = this._itemNameToValues[item.itemName];
+			if (intVal !== undefined)
+				return intVal;
+			else
+				return 0;
+		}
+		ContainsItem(item){
+			if (item.originName != this.name) return false;
+
+			return (item.itemName in this._itemNameToValues);
+		}
+		TryGetItemWithValue(val, item){//item was an out
+			//the original function returns a boolean and has a second parameter called item that is an `out`. Both are needed and we can't just return the item because it'll always be truthy. Instead, we return an object containing the bool an dthe item
+			for (var key in this._itemNameToValues){
+				if (this._itemNameToValues[key] == val) {
+					item = new RawListItem(this.name, key);
+					return {
+						item :item,
+						exists: true
+					};
+				}
+			}
+
+			item = RawListItem.Null;
+			return {
+				item :item,
+				exists: false
+			};
+		}
+		ListRange(min, max){
+			var rawList = new RawList();
+			for (var key in this._itemNameToValues){
+				if (this._itemNameToValues[key] >= min && this._itemNameToValues[key] <= max) {
+					var item = new RawListItem(this.name, key);
+					rawList.Add(item, this._itemNameToValues[key]);
+				}
+			}
+			return new ListValue(rawList);
+		}
+	}
+
+	class ListDefinitionsOrigin{
+		constructor(lists){
+			this._lists = {};
+			
+			lists.forEach((list)=>{
+				this._lists[list.name] = list;
+			});
+		}
+		get lists(){
+			var listOfLists = [];
+			
+			for (var key in this._lists){
+				listOfLists.push(this._lists[key]);
+			}
+			return listOfLists;
+		}
+		TryGetDefinition(name, def){
+			//initially, this function returns a boolean and the second parameter is an out.
+			return (name in this._lists) ? this._lists[name] : def;
+		}
+		FindSingleItemListWithName(name){
+			var item = RawListItem.Null;
+			var list = null;
+
+			var nameParts = name.split('.');
+			if (nameParts.length == 2) {
+				item = new RawListItem(nameParts[0], nameParts[1]);
+				list = this.TryGetDefinition(item.originName, list);
+			} else {
+				for (var key in this._lists){
+					var listWithItem = this._lists[key];
+					item = new RawListItem(key, name);
+					if (listWithItem.ContainsItem(item)) {
+						list = listWithItem;
+						break;
+					}
+				}
+			}
+			
+			if (list != null) {
+				var itemValue = list.ValueForItem(item);
+				return new ListValue(item, itemValue);
+			}
+
+			return null;
 		}
 	}
 
@@ -1665,6 +2296,7 @@
 				}
 
 				// Native functions
+				if (str == "L^") str = "^";
 				if( NativeFunctionCall.CallExistsWithName(str) )
 					return NativeFunctionCall.CallWithName(str);
 
@@ -1788,6 +2420,28 @@
 				if (propValue = obj["#"]){
 					return new Tag(propValue.toString());
 				}
+				
+				//list value
+				if (propValue = obj["list"]) {
+	//				var listContent = (Dictionary<string, object>)propValue;
+					var listContent = propValue;
+					var rawList = new RawList();
+					if (propValue = obj["origins"]) {
+	//					var namesAsObjs = (List<object>)propValue;
+						var namesAsObjs = propValue;
+	//					rawList.SetInitialOriginNames(namesAsObjs.Cast<string>().ToList());
+						rawList.SetInitialOriginNames(namesAsObjs);
+					}
+					
+					for (var key in listContent){
+						var nameToVal = listContent[key];
+						var item = new RawListItem(key);
+						var val = parseInt(nameToVal);
+						rawList.Add(item, val);
+					}
+					
+					return new ListValue(rawList);
+				}
 
 				if (obj["originalChoicePath"] != null)
 					return this.JObjectToChoice(obj);
@@ -1871,6 +2525,12 @@
 				else
 					return "^" + strVal.value;
 			}
+			
+	//		var listVal = obj as ListValue;
+			var listVal = obj;
+			if (listVal instanceof ListValue) {
+				return this.InkListToJObject(listVal);
+			}
 
 	//		var divTargetVal = obj as DivertTargetValue;
 			var divTargetVal = obj;
@@ -1906,8 +2566,13 @@
 
 	//		var nativeFunc = obj as Runtime.NativeFunctionCall;
 			var nativeFunc = obj;
-			if (nativeFunc instanceof NativeFunctionCall)
-				return nativeFunc.name;
+			if (nativeFunc instanceof NativeFunctionCall) {
+				var name = nativeFunc.name;
+
+				// Avoid collision with ^ used to indicate a string
+				if (name == "^") name = "L^";
+				return name;
+			}
 
 			// Variable reference
 	//		var varRef = obj as VariableReference;
@@ -2060,6 +2725,69 @@
 			jObj["originalThreadIndex"] = choice.originalThreadIndex;
 			return jObj;
 		}
+		static InkListToJObject (listVal){
+			var rawList = listVal.value;
+
+			var dict = {};
+
+			var content = {};
+			
+			rawList.forEach(function(itemAndValue){
+				var item = itemAndValue.Key;
+				var val = itemAndValue.Value;
+				content[item.toString()] = val;
+			});
+
+			dict["list"] = content;
+
+			if (rawList.Count == 0 && rawList.originNames != null && rawList.originNames.length > 0) {
+	//			dict["origins"] = rawList.originNames.Cast<object> ().ToList ();
+				dict["origins"] = rawList.originNames;
+			}
+
+			return dict;
+		}
+		static ListDefinitionsToJToken(origin){
+			var result = {};
+			
+			origin.lists.forEach(function(def){
+				var listDefJson = {};
+				def.items.forEach(function(itemToVal){
+					var item = itemToVal.Key;
+					var val = itemToVal.Value;
+					listDefJson[item.itemName] = val;
+				});
+				
+				result[def.name] = listDefJson;
+			});
+			
+			return result;
+		}
+		static JTokenToListDefinitions(obj){
+	//		var defsObj = (Dictionary<string, object>)obj;
+			var defsObj = obj;
+
+			var allDefs = [];
+			
+			for (var key in defsObj){
+				var name = key.toString();
+	//			var listDefJson = (Dictionary<string, object>)kv.Value;
+				var listDefJson = defsObj[key];
+
+				// Cast (string, object) to (string, int) for items
+				var items = {};
+				
+				for (var nameValueKey in listDefJson){
+					var nameValue = listDefJson[nameValueKey];
+					items[nameValueKey] = parseInt(nameValue);
+				}
+
+				var def = new ListDefinition(name, items);
+				allDefs.push(def);
+			}
+
+			return new ListDefinitionsOrigin(allDefs);
+		}
 	}
 
 	var _controlCommandNames = [];
@@ -2083,6 +2811,8 @@
 	_controlCommandNames[ControlCommand.CommandType.StartThread] = "thread";
 	_controlCommandNames[ControlCommand.CommandType.Done] = "done";
 	_controlCommandNames[ControlCommand.CommandType.End] = "end";
+	_controlCommandNames[ControlCommand.CommandType.ListFromInt] = "listInt";
+	_controlCommandNames[ControlCommand.CommandType.ListRange] = "range";
 
 	for (var i$1 = 0; i$1 < ControlCommand.CommandType.TOTAL_VALUES; ++i$1) {
 		if (_controlCommandNames[i$1] == null)
@@ -2347,6 +3077,10 @@
 			if (!declareNew && !contextElement.temporaryVariables[name]) {
 				throw new StoryException("Could not find temporary variable to set: " + name);
 			}
+			
+			var oldValue;
+			if( oldValue = contextElement.temporaryVariables[name] )
+				ListValue.RetainListOriginsForAssignment(oldValue, value);
 
 			contextElement.temporaryVariables[name] = value;
 		}
@@ -2375,9 +3109,10 @@
 	// - varchanged events
 	// - see if the internal getenumarators are needed
 	class VariablesState{
-		constructor(callStack){
+		constructor(callStack, listDefsOrigin){
 			this._globalVariables = {};
 			this._callStack = callStack;
+			this._listDefsOrigin = listDefsOrigin;
 			
 			this._batchObservingVariableChanges = null;
 			this._changedVariables = null;
@@ -2453,15 +3188,16 @@
 			
 			this.variableChangedEventCallbacks.push(callback);
 		}
-		CopyFrom(varState){
-			this._globalVariables = varState._globalVariables;
-			this.variableChangedEvent = varState.variableChangedEvent;
+		CopyFrom(toCopy){
+			this._globalVariables = Object.assign({}, toCopy._globalVariables);
+			
+			this.variableChangedEvent = toCopy.variableChangedEvent;
 
-			if (varState.batchObservingVariableChanges != this.batchObservingVariableChanges) {
+			if (toCopy.batchObservingVariableChanges != this.batchObservingVariableChanges) {
 
-				if (varState.batchObservingVariableChanges) {
+				if (toCopy.batchObservingVariableChanges) {
 					this._batchObservingVariableChanges = true;
-					this._changedVariables = varState._changedVariables;
+					this._changedVariables = toCopy._changedVariables;
 				} else {
 					this._batchObservingVariableChanges = false;
 					this._changedVariables = null;
@@ -2489,7 +3225,11 @@
 			if (contextIndex == 0 || contextIndex == -1) {
 				if ( varValue = this._globalVariables[name] )
 					return varValue;
-			} 
+				
+				var listItemValue = this._listDefsOrigin.FindSingleItemListWithName(name);
+				if (listItemValue)
+					return listItemValue;
+			}
 
 			// Temporary
 			varValue = this._callStack.GetTemporaryVariableWithName(name, contextIndex);
@@ -2549,9 +3289,20 @@
 				this._callStack.SetTemporaryVariable(name, value, varAss.isNewDeclaration, contextIndex);
 			}
 		}
+		RetainListOriginsForAssignment(oldValue, newValue){
+	//		var oldList = oldValue as ListValue;
+			var oldList = oldValue;
+	//		var newList = newValue as ListValue;
+			var newList = newValue;
+			
+			if (oldList instanceof ListValue && newList instanceof ListValue && newList.value.Count == 0)
+				newList.value.SetInitialOriginNames(oldList.value.originNames);
+		}
 		SetGlobal(variableName, value){
 			var oldValue = null;
 			oldValue = this._globalVariables[variableName];
+			
+			ListValue.RetainListOriginsForAssignment(oldValue, value);
 
 			this._globalVariables[variableName] = value;
 
@@ -2651,7 +3402,7 @@
 			this._evaluationStack = [];
 
 			this.callStack = new CallStack(story.rootContentContainer);
-			this._variablesState = new VariablesState(this.callStack);
+			this._variablesState = new VariablesState(this.callStack, story.listDefinitions);
 
 			this._visitCounts = {};
 			this._turnIndices = {};
@@ -2962,6 +3713,27 @@
 			this.OutputStreamDirty();
 		}
 		PushEvaluationStack(obj){
+	//		var listValue = obj as ListValue;
+			var listValue = obj;
+			if (listValue instanceof ListValue) {
+
+				// Update origin when list is has something to indicate the list origin
+				var rawList = listValue.value;
+				var names = rawList.originNames;
+				if (names != null) {
+					var origins = [];
+					
+					names.forEach((n)=>{
+						var def = null;
+						def = this.story.listDefinitions.TryGetDefinition(n, def);
+						if( origins.indexOf(def) < 0 )
+							origins.push(def);
+					});
+
+					rawList.origins = origins;
+				}
+			}
+			
 			this.evaluationStack.push(obj);
 		}
 		PopEvaluationStack(numberOfObjects){
@@ -3248,7 +4020,7 @@
 						throw "ink arguments when calling EvaluateFunction must be int, float or string";
 					}
 
-					this.evaluationStack.push(Value.Create(args[i]));
+					this.PushEvaluationStack(Value.Create(args[i]));
 				}
 			}
 		}
@@ -3332,7 +4104,7 @@
 
 			copy.callStack = new CallStack(this.callStack);
 			
-			copy._variablesState = new VariablesState(copy.callStack);
+			copy._variablesState = new VariablesState(copy.callStack, this.story.listDefinitions);
 			copy.variablesState.CopyFrom(this.variablesState);
 
 			copy.evaluationStack.push.apply(copy.evaluationStack, this.evaluationStack);
@@ -3341,6 +4113,8 @@
 				copy.divertedTargetObject = this.divertedTargetObject;
 
 			copy.previousContentObject = this.previousContentObject;
+			
+			copy._isExternalFunctionEvaluation = this._isExternalFunctionEvaluation;
 			
 			copy._visitCounts = {};
 			for (var keyValue in this._visitCounts) {
@@ -3368,8 +4142,8 @@
 		}
 	}
 
-	StoryState.kInkSaveStateVersion = 5;
-	StoryState.kMinCompatibleLoadVersion = 4;
+	StoryState.kInkSaveStateVersion = 6;
+	StoryState.kMinCompatibleLoadVersion = 6;
 
 	if (!Number.isInteger) {
 		Number.isInteger = function isInteger (nVal) {
@@ -3378,21 +4152,27 @@
 	}
 
 	class Story extends Object$1{
-		constructor(jsonString){
+		constructor(jsonString, lists){
 			super();
 			
-			this.inkVersionCurrent = 15;
-			this.inkVersionMinimumCompatible = 15;
+			lists = lists || null;
+			
+			this.inkVersionCurrent = 16;
+			this.inkVersionMinimumCompatible = 16;
 			
 			this._variableObservers = null;
 			this._externals = {};
 			this._prevContainerSet = null;
+			this._listDefinitions = null;
 			
 			if (jsonString instanceof Container){
 				this._mainContentContainer = jsonString;
+				
+				if (lists != null)
+					this._listDefinitions = new ListDefinitionsOrigin(lists);
 			}
 			else{
-				//the original version only accepts a string as a constructor, but this is javascript and it's almost easier to get a JSON value than a string, so we're silently accepting btoh
+				//the original version only accepts a string as a constructor, but this is javascript and it's almost easier to get a JSON value than a string, so we're silently accepting both
 				var rootObject = (typeof jsonString === 'string') ? JSON.parse(jsonString) : jsonString;
 
 				var versionObj = rootObject["inkVersion"];
@@ -3413,6 +4193,11 @@
 				var rootToken = rootObject["root"];
 				if (rootToken == null)
 					throw "Root node for ink not found. Are you sure it's a valid .ink.json file?";
+				
+				var listDefsObj;
+	            if (listDefsObj = rootObject["listDefs"]) {
+	                this._listDefinitions = JsonSerialisation.JTokenToListDefinitions(listDefsObj);
+	            }
 
 				this._mainContentContainer = JsonSerialisation.JTokenToRuntimeObject(rootToken);
 
@@ -3451,6 +4236,9 @@
 		get variablesState(){
 			return this.state.variablesState;
 		}
+		get listDefinitions (){
+			return this._listDefinitions;
+		}
 		get state(){
 			return this._state;
 		}
@@ -3476,6 +4264,9 @@
 			var rootObject = {};
 			rootObject["inkVersion"] = this.inkVersionCurrent;
 			rootObject["root"] = rootContainerJsonList;
+			
+			if (this._listDefinitions != null)
+				rootObject["listDefs"] = JsonSerialisation.ListDefinitionsToJToken(this._listDefinitions);
 
 			return JSON.stringify(rootObject);
 		}
@@ -4176,6 +4967,82 @@
 				case ControlCommand.CommandType.End:
 					this.state.ForceEnd();
 					break;
+						
+				case ControlCommand.CommandType.ListFromInt:
+	//				var intVal = state.PopEvaluationStack () as IntValue;
+					var intVal = parseInt(this.state.PopEvaluationStack());
+	//				var listNameVal = state.PopEvaluationStack () as StringValue;
+					var listNameVal = this.state.PopEvaluationStack().toString();
+
+					var generatedListValue = null;
+
+					var foundListDef;
+					if (foundListDef = this.listDefinitions.TryGetDefinition(listNameVal.value, foundListDef)) {
+						var foundItem = foundListDef.TryGetItemWithValue(intVal.value);
+						if (foundItem.exists) {
+							generatedListValue = new ListValue(foundItem.item, intVal.value);
+						}
+					} else {
+						throw new StoryException("Failed to find LIST called " + listNameVal.value);
+					}
+
+					if (generatedListValue == null)
+						generatedListValue = new ListValue();
+
+					this.state.PushEvaluationStack(generatedListValue);
+					break;
+						
+				case ControlCommand.CommandType.ListRange:
+					var max = this.state.PopEvaluationStack();
+					var min = this.state.PopEvaluationStack();
+
+	//				var targetList = state.PopEvaluationStack () as ListValue;
+					var targetList = this.state.PopEvaluationStack();
+
+					if (targetList instanceof ListValue === false || targetList == null || min == null || max == null)
+						throw new StoryException("Expected list, minimum and maximum for LIST_RANGE");
+
+					// Allow either int or a particular list item to be passed for the bounds,
+					// so wrap up a function to handle this casting for us.
+					function IntBound(obj){
+	//					var listValue = obj as ListValue;
+						var listValue = obj;
+						if (listValue instanceof ListValue) {
+							return parseInt(listValue.value.maxItem.Value);
+						}
+
+	//					var intValue = obj as IntValue;
+						var intValue = obj;
+						if (intValue instanceof IntValue) {
+							return intValue.value;
+						}
+
+						return -1;
+					}
+
+					var minVal = IntBound(min);
+					var maxVal = IntBound(max);
+					if (minVal == -1)
+						throw new StoryException("Invalid min range bound passed to LIST_VALUE(): " + min);
+
+					if (maxVal == -1)
+						throw new StoryException("Invalid max range bound passed to LIST_VALUE(): " + max);
+
+					// Extract the range of items from the origin list
+					var result = new ListValue();
+					var origins = targetList.value.origins;
+
+					if (origins != null) {
+						origins.forEach(function(origin){
+							var rangeFromOrigin = origin.ListRange(minVal, maxVal);
+							rangeFromOrigin.value.forEach(function(kv){
+								result.value.Add(kv.Key, kv.Value);
+							});
+						});
+					}
+
+					this.state.PushEvaluationStack(result);
+					break;
 
 				default:
 					this.Error("unhandled ControlCommand: " + evalCommand);
@@ -4224,17 +5091,17 @@
 					}
 				}
 
-				this.state.evaluationStack.push( foundValue );
+				this.state.PushEvaluationStack(foundValue);
 
 				return true;
 			}
 
 			// Native function call
-			else if( contentObj instanceof NativeFunctionCall ) {
+			else if (contentObj instanceof NativeFunctionCall) {
 				var func = contentObj;
 				var funcParams = this.state.PopEvaluationStack(func.numberOfParameters);
 				var result = func.Call(funcParams);
-				this.state.evaluationStack.push(result);
+				this.state.PushEvaluationStack(result);
 				return true;
 			}
 

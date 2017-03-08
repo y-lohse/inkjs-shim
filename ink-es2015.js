@@ -3143,6 +3143,12 @@
 	//			console.log("ES6 Proxy not available - direct manipulation of global variables can't work, use $() instead.");
 			}
 		}
+		get callStack(){
+			return this._callStack;
+		}
+		set callStack(callStack){
+			this._callStack = callStack;
+		}
 		get batchObservingVariableChanges(){
 			return this._batchObservingVariableChanges;
 		}
@@ -4007,6 +4013,8 @@
 			// Create a new base call stack element.
 			this.callStack = new CallStack(funcContainer);
 			this.callStack.currentElement.type = PushPopType.Function;
+			
+			this._variablesState.callStack = this.callStack;
 
 			// By setting ourselves in external function evaluation mode,
 			// we're saying it's okay to end the flow without a Done or End,
@@ -4049,6 +4057,8 @@
 			this.callStack = this._originalCallstack;
 			this._originalCallstack = null;
 			this._originalEvaluationStackHeight = 0;
+			
+			this._variablesState.callStack = this.callStack;
 
 			if (returnedObj) {
 				if (returnedObj instanceof Void)
@@ -4572,7 +4582,7 @@
 				return;
 	            
 			// First, find the previously open set of containers
-			if (this._prevContainerSet == null) this._prevContainerSet = [];
+			this._prevContainerSet = [];
 			if (previousContentObject) {
 	//			Container prevAncestor = previousContentObject as Container ?? previousContentObject.parent as Container;
 				var prevAncestor = (previousContentObject instanceof Container) ? previousContentObject : previousContentObject.parent;

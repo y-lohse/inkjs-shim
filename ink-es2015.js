@@ -361,7 +361,7 @@
 		}
 	}
 
-	class RawListItem{
+	class InkListItem{
 		constructor(fullNameOrOriginName, itemName){
 			if (itemName !== undefined){
 				this.originName = fullNameOrOriginName;
@@ -374,7 +374,7 @@
 			}
 		}
 		static Null(){
-			return new RawListItem(null, null);
+			return new InkListItem(null, null);
 		}
 		isNull(){
 			return this.originName == null && this.itemName == null;
@@ -386,8 +386,8 @@
 			return this.fullname;
 		}
 		Equals(obj){
-			if (obj instanceof RawListItem) {
-	//			var otherItem = (RawListItem)obj;
+			if (obj instanceof InkListItem) {
+	//			var otherItem = (InkListItem)obj;
 				var otherItem = obj;
 				return otherItem.itemName   == this.itemName 
 					&& otherItem.originName == this.originName;
@@ -397,7 +397,7 @@
 		}
 		//GetHashCode not implemented
 		toString(){
-			//WARNING: experimental. RawListItem are structs and are used as keys inside hashes. In js, we can't use an object as a key, as the key needs to be a string. C# gets around that with the internal GetHashCode, and the js equivalent to that is toString. So here, toString acts as C#'s GetHashCode
+			//WARNING: experimental. InkListItem are structs and are used as keys inside hashes. In js, we can't use an object as a key, as the key needs to be a string. C# gets around that with the internal GetHashCode, and the js equivalent to that is toString. So here, toString acts as C#'s GetHashCode
 			var originCode = '0';
 			var itemCode = (this.itemName) ? this.itemName.toString() : 'null';
 			if (this.originName != null)
@@ -407,9 +407,9 @@
 		}
 	}
 
-	//in C#, rawlists are based on dictionnary; the equivalent of a dictionnary in js is Object, but we can't use that or it will conflate dictionnary items and RawList class properties.
-	//instead RawList-js has a special _values property wich contains the actual "Dictionnary", and a few Dictionnary methods are re-implemented on RawList. This also means directly iterating over the RawList won't work as expected. Maybe we can return a proxy if that's required.
-	class RawList{
+	//in C#, rawlists are based on dictionnary; the equivalent of a dictionnary in js is Object, but we can't use that or it will conflate dictionnary items and InkList class properties.
+	//instead InkList-js has a special _values property wich contains the actual "Dictionnary", and a few Dictionnary methods are re-implemented on InkList. This also means directly iterating over the InkList won't work as expected. Maybe we can return a proxy if that's required.
+	class InkList {
 		constructor(otherListOrSingleElement){
 			this._keys = {};
 			this._values = {};
@@ -418,7 +418,7 @@
 			
 			//polymorphioc constructor
 			if (otherListOrSingleElement){
-				if (otherListOrSingleElement instanceof RawList){
+				if (otherListOrSingleElement instanceof InkList){
 					var otherList = otherListOrSingleElement;
 					otherList.forEach((kv)=>{
 						this.Add(kv.Key, kv.Value);
@@ -439,6 +439,60 @@
 					Value: this._values[key]
 				});
 			}
+		}
+		AddItem(itemOrItemName){
+			if (itemOrItemName instanceof InkListItem){
+				var item = itemOrItemName;
+				
+				if (item.originName == null) {
+						this.AddItem(item.itemName);
+						return;
+				}
+
+				this.origins.forEach((origin)=>{
+					if (origin.name == item.originName) {
+							var intVal;
+							intVal = origin.TryGetValueForItem(item, intVal);
+							if (intVal !== undefined) {
+									this.Add(item, intVal);
+									return;
+							} else {
+									throw "Could not add the item " + item + " to this list because it doesn't exist in the original list definition in ink.";
+							}
+					}
+				});
+
+				throw "Failed to add item to list because the item was from a new list definition that wasn't previously known to this list. Only items from previously known lists can be used, so that the int value can be found.";
+			}
+			else{
+				var itemName = itemOrItemName;
+				
+				var foundListDef = null;
+
+				this.origins.forEach((origin)=>{
+					if (origin.ContainsItemWithName(itemName)) {
+							if (foundListDef != null) {
+									throw "Could not add the item " + itemName + " to this list because it could come from either " + origin.name + " or " + foundListDef.name;
+							} else {
+									foundListDef = origin;
+							}
+					}
+				});
+
+				if (foundListDef == null)
+						throw "Could not add the item " + itemName + " to this list because it isn't known to any list definitions previously associated with this list.";
+
+				var item = new InkListItem(foundListDef.name, itemName);
+				var itemVal = foundListDef.ValueForItem(item);
+				this.Add(item, itemVal);
+			}
+		}
+		ContainsItemNamed(itemName){
+			var contains = false;
+			this.forEach(itemWithValue => {
+					if (itemWithValue.Key.itemName == itemName) contains = true;
+			});
+			return contains;
 		}
 		ContainsKey(key){
 			return key in this._values;
@@ -487,7 +541,10 @@
 			this._originNames = [initialOriginName];
 		}
 		SetInitialOriginNames(initialOriginNames){
-			this._originNames = initialOriginNames.slice();//store a copy
+			if (initialOriginNames == null)
+					this._originNames = null;
+			else
+					this._originNames = initialOriginNames.slice();//store a copy
 		}
 		get maxItem(){
 			var max = {
@@ -514,7 +571,7 @@
 			return min;
 		}
 		get inverse(){
-			var list = new RawList();
+			var list = new InkList();
 			if (this.origins != null) {
 				this.origins.forEach((origin)=>{
 					origin.items.forEach((itemAndValue)=>{
@@ -526,7 +583,7 @@
 			return list;
 		}
 		get all(){
-			var list = new RawList();
+			var list = new InkList();
 			if (this.origins != null) {
 				this.origins.forEach(function(origin){
 					origin.items.forEach(function(itemAndValue){
@@ -537,14 +594,14 @@
 			return list;
 		}
 		Union(otherList){
-			var union = new RawList(this);
+			var union = new InkList(this);
 			otherList.forEach(function(kv){
 				union.Add(kv.Key, kv.Value);
 			});
 			return union;
 		}
 		Intersect(otherList){
-			var intersection = new RawList();
+			var intersection = new InkList();
 			this.forEach(function(kv){
 				if (otherList.ContainsKey(kv.Key))
 					intersection.Add(kv.Key, kv.Value);
@@ -552,7 +609,7 @@
 			return intersection;
 		}
 		Without(listToRemove){
-			var result = new RawList(this);
+			var result = new InkList(this);
 			listToRemove.forEach(function(kv){
 				result.Remove(kv.Key);
 			});
@@ -594,25 +651,25 @@
 		}
 		MaxAsList(){
 			if (this.Count > 0)
-				return new RawList(this.maxItem);
+				return new InkList(this.maxItem);
 			else
-				return new RawList();
+				return new InkList();
 		}
 		MinAsList(){
 			if (this.Count > 0)
-				return new RawList(this.minItem);
+				return new InkList(this.minItem);
 			else
-				return new RawList();
+				return new InkList();
 		}
 		Equals(other){
-	//		var otherRawList = other as RawList;
-			var otherRawList = other;
-			if (otherRawList instanceof RawList === false) return false;
-			if (otherRawList.Count != this.Count) return false;
+	//		var otherInkList = other as InkList;
+			var otherInkList = other;
+			if (otherInkList instanceof InkList === false) return false;
+			if (otherInkList.Count != this.Count) return false;
 
 			var equals = true;
 			this.forEach(function(kv){
-				if (!otherRawList.ContainsKey(kv.Key))
+				if (!otherInkList.ContainsKey(kv.Key))
 					equals = false;
 			});
 
@@ -639,7 +696,7 @@
 
 			return sb.toString();
 		}
-		//casting a RawList to a Number, for somereason, actually gives a number. This messes up the type detection when creating a Value from a RawList. Returning NaN here prevents that.
+		//casting a InkList to a Number, for somereason, actually gives a number. This messes up the type detection when creating a Value from a InkList. Returning NaN here prevents that.
 		valueOf(){
 			return NaN;
 		}
@@ -692,7 +749,7 @@
 				return new StringValue(val);
 			} else if (val instanceof Path$1) {
 				return new DivertTargetValue(val);
-			} else if (val instanceof RawList) {
+			} else if (val instanceof InkList) {
 				return new ListValue(val);
 			}
 		
@@ -948,17 +1005,17 @@
 			
 			this._valueType = ValueType.List;
 			
-			if (listOrSingleItem instanceof RawList){
-				this.value = new RawList(listOrSingleItem);
+			if (listOrSingleItem instanceof InkList){
+				this.value = new InkList(listOrSingleItem);
 			}
 			else if (listOrSingleItem !== undefined && singleValue !== undefined){
-				this.value = new RawList({
+				this.value = new InkList({
 					Key: listOrSingleItem,
 					Value: singleValue
 				});
 			}
 			else{
-				this.value = new RawList();
+				this.value = new InkList();
 			}
 		}
 		static RetainListOriginsForAssignment(oldValue, newValue){
@@ -1806,7 +1863,7 @@
 			var intVal = listIntParams[1];
 
 
-			var resultRawList = new RawList();
+			var resultInkList = new InkList();
 
 			listVal.value.forEach(listItemWithValue => {
 				var listItem = listItemWithValue.Key;
@@ -1829,11 +1886,11 @@
 				if (itemOrigin != null) {
 					var incrementedItem = itemOrigin.TryGetItemWithValue(targetInt);
 					if (incrementedItem.exists)
-						resultRawList.Add(incrementedItem.item, targetInt);
+						resultInkList.Add(incrementedItem.item, targetInt);
 				}
 			});
 
-			return new ListValue(resultRawList);
+			return new ListValue(resultInkList);
 		}
 		CoerceValuesToSingleType(parametersIn){
 			var valType = ValueType.Int;
@@ -1937,8 +1994,9 @@
 				this.AddFloatBinaryOp(this.Min,      (x, y) => {return Math.min(x, y)});
 
 				// String operations
-				this.AddStringBinaryOp(this.Add,     (x, y) => {return x + y}); // concat
-				this.AddStringBinaryOp(this.Equal,   (x, y) => {return x === y ? 1 : 0});
+				this.AddStringBinaryOp(this.Add,     	(x, y) => {return x + y}); // concat
+				this.AddStringBinaryOp(this.Equal,   	(x, y) => {return x === y ? 1 : 0});
+				this.AddStringBinaryOp(this.NotEquals,(x, y) => {return !(x === y) ? 1 : 0});
 				
 				this.AddListBinaryOp(this.Add, 		 (x, y) => {return x.Union(y)});
 				this.AddListBinaryOp(this.And, 		 (x, y) => {return x.Union(y)});
@@ -2099,7 +2157,7 @@
 				this._items = {};
 				this._rawListItemsKeys = {};
 				for (var key in this._itemNameToValues){
-					var item = new RawListItem(this.name, key);
+					var item = new InkListItem(this.name, key);
 					this._rawListItemsKeys[item] = item;
 					this._items[item] = this._itemNameToValues[key];
 				}
@@ -2128,11 +2186,14 @@
 
 			return (item.itemName in this._itemNameToValues);
 		}
+		ContainsItemWithName(itemName){
+			return this._itemNameToValues[itemName] !== undefined;
+		}
 		TryGetItemWithValue(val, item){//item was an out
 			//the original function returns a boolean and has a second parameter called item that is an `out`. Both are needed and we can't just return the item because it'll always be truthy. Instead, we return an object containing the bool an dthe item
 			for (var key in this._itemNameToValues){
 				if (this._itemNameToValues[key] == val) {
-					item = new RawListItem(this.name, key);
+					item = new InkListItem(this.name, key);
 					return {
 						item :item,
 						exists: true
@@ -2140,17 +2201,21 @@
 				}
 			}
 
-			item = RawListItem.Null;
+			item = InkListItem.Null;
 			return {
 				item :item,
 				exists: false
 			};
 		}
+		TryGetValueForItem(item, intval){//intval is an out
+			intVal = this._itemNameToValues[item.itemName];
+			return intVal;
+		}
 		ListRange(min, max){
-			var rawList = new RawList();
+			var rawList = new InkList();
 			for (var key in this._itemNameToValues){
 				if (this._itemNameToValues[key] >= min && this._itemNameToValues[key] <= max) {
-					var item = new RawListItem(this.name, key);
+					var item = new InkListItem(this.name, key);
 					rawList.Add(item, this._itemNameToValues[key]);
 				}
 			}
@@ -2179,17 +2244,17 @@
 			return (name in this._lists) ? this._lists[name] : def;
 		}
 		FindSingleItemListWithName(name){
-			var item = RawListItem.Null;
+			var item = InkListItem.Null;
 			var list = null;
 
 			var nameParts = name.split('.');
 			if (nameParts.length == 2) {
-				item = new RawListItem(nameParts[0], nameParts[1]);
+				item = new InkListItem(nameParts[0], nameParts[1]);
 				list = this.TryGetDefinition(item.originName, list);
 			} else {
 				for (var key in this._lists){
 					var listWithItem = this._lists[key];
-					item = new RawListItem(key, name);
+					item = new InkListItem(key, name);
 					if (listWithItem.ContainsItem(item)) {
 						list = listWithItem;
 						break;
@@ -2425,7 +2490,7 @@
 				if (propValue = obj["list"]) {
 	//				var listContent = (Dictionary<string, object>)propValue;
 					var listContent = propValue;
-					var rawList = new RawList();
+					var rawList = new InkList();
 					if (propValue = obj["origins"]) {
 	//					var namesAsObjs = (List<object>)propValue;
 						var namesAsObjs = propValue;
@@ -2435,7 +2500,7 @@
 					
 					for (var key in listContent){
 						var nameToVal = listContent[key];
-						var item = new RawListItem(key);
+						var item = new InkListItem(key);
 						var val = parseInt(nameToVal);
 						rawList.Add(item, val);
 					}
@@ -3012,8 +3077,8 @@
 		}
 		PushThread(){
 			var newThread = this.currentThread.Copy();
-			newThread.threadIndex = this._threadCounter;
 			this._threadCounter++;
+			newThread.threadIndex = this._threadCounter;
 			this._threads.push(newThread);
 		}
 		PopThread(){
@@ -4020,12 +4085,15 @@
 			// we're saying it's okay to end the flow without a Done or End,
 			// but with a ~ return instead.
 			this._isExternalFunctionEvaluation = true;
-
+			
+			this.PassArgumentsToEvaluationStack(args);
+		}
+		PassArgumentsToEvaluationStack(args){
 			// Pass arguments onto the evaluation stack
 			if (args != null) {
 				for (var i = 0; i < args.length; i++) {
 					if (!(typeof args[i] === 'number' || typeof args[i] === 'string')) {
-						throw "ink arguments when calling EvaluateFunction must be int, float or string";
+						throw "ink arguments when calling EvaluateFunction / ChoosePathStringWithParameters  must be int, float or string";
 					}
 
 					this.PushEvaluationStack(Value.Create(args[i]));
@@ -4765,7 +4833,7 @@
 						var output = this.state.PopEvaluationStack();
 
 						// Functions may evaluate to Void, in which case we skip output
-						if (!(output instanceof Void)) {
+						if (output != null && !(output instanceof Void)) {
 							// TODO: Should we really always blanket convert to string?
 							// It would be okay to have numbers in the output stream the
 							// only problem is when exporting text for viewing, it skips over numbers etc.
@@ -4987,7 +5055,7 @@
 					var generatedListValue = null;
 
 					var foundListDef;
-					if (foundListDef = this.listDefinitions.TryGetDefinition(listNameVal.value, foundListDef)) {
+					if (foundListDef = this.listDefinitions.TryGetDefinition(listNameVal, foundListDef)) {
 						var foundItem = foundListDef.TryGetItemWithValue(intVal.value);
 						if (foundItem.exists) {
 							generatedListValue = new ListValue(foundItem.item, intVal.value);
@@ -5014,7 +5082,7 @@
 
 					// Allow either int or a particular list item to be passed for the bounds,
 					// so wrap up a function to handle this casting for us.
-					function IntBound(obj){
+					var IntBound = function IntBound(obj){
 	//					var listValue = obj as ListValue;
 						var listValue = obj;
 						if (listValue instanceof ListValue) {
@@ -5028,7 +5096,7 @@
 						}
 
 						return -1;
-					}
+					};
 
 					var minVal = IntBound(min);
 					var maxVal = IntBound(max);
@@ -5118,11 +5186,13 @@
 			// No control content, must be ordinary content
 			return false;
 		}
-		ChoosePathString(path){
+		ChoosePathString(path, args){
+			args = args || [];
+			this.state.PassArgumentsToEvaluationStack(args);
 			this.ChoosePath(new Path$1(path));
 		}
-		ChoosePath(path){
-			this.state.SetChosenPath(path);
+		ChoosePath(p){
+			this.state.SetChosenPath(p);
 
 			// Take a note of newly visited containers for read counts etc
 			this.VisitChangedContainersDueToDivert();
